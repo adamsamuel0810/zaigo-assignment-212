@@ -1,0 +1,5 @@
+python-pptx==1.0.2
+pydantic==2.10.6
+pymupdf==1.25.5
+# Windows only — enables PowerPoint COM slide rendering:
+# pywin32==308

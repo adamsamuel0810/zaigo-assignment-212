@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f5f9;
+  --foreground: #0b1220;
+  --border: #e4e9f0;
+  --border-strong: #cdd6e3;
+  --accent: #006ebe;
+  --accent-dark: #004d84;
+  --accent-light: #e8f4fc;
+  --accent-2: #1c9bf0;
+  --accent-gradient: linear-gradient(135deg, #1c9bf0 0%, #006ebe 52%, #004d84 100%);
+  --muted: #5d6b80;
+  --muted-light: #92a0b4;
+  --card: #ffffff;
+  --surface: #f7f9fc;
+  --error: #c11717;
+  --error-bg: #fef2f2;
+  --warning: #b45309;
+  --warning-bg: #fffbeb;
+  --success: #15803d;
+  --success-bg: #f0fdf4;
+
+  /* Soft, layered shadow scale */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.10), 0 4px 10px rgba(15, 23, 42, 0.05);
+  --shadow-xl: 0 24px 50px rgba(15, 23, 42, 0.16), 0 8px 16px rgba(15, 23, 42, 0.06);
+  --shadow-accent: 0 8px 22px rgba(0, 110, 190, 0.28);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.011em;
+}
+
+::selection {
+  background: rgba(0, 110, 190, 0.16);
+  color: var(--accent-dark);
+}
+
+/* Refined, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-light);
+  background-clip: content-box;
+}
+
+.app-canvas {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(900px circle at 88% -8%, rgba(28, 155, 240, 0.10) 0%, transparent 45%),
+    radial-gradient(700px circle at -5% 108%, rgba(0, 110, 190, 0.07) 0%, transparent 42%);
+}
+
+/* ---- Reusable presentation helpers ---- */
+.text-gradient {
+  background: linear-gradient(120deg, #0b1220 0%, #1f3a5f 40%, #006ebe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand-mark {
+  background: var(--accent-gradient);
+  box-shadow: var(--shadow-accent);
+}
+
+.surface-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.elevate {
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease;
+}
+.elevate:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ---- Entrance animations ---- */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  70% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease both;
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-scale-in {
+  animation: scale-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-scale-in {
+    animation: none;
+  }
+  .elevate:hover {
+    transform: none;
+  }
+}
+
+/* Print only the final report when the user prints / saves to PDF. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #final-report,
+  #final-report * {
+    visibility: visible;
+  }
+  #final-report {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    box-shadow: none;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

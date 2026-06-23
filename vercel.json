@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/parse.py": {
+      "maxDuration": 120,
+      "memory": 3008
+    }
+  }
+}
