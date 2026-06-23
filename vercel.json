@@ -1,7 +1,11 @@
 {
   "functions": {
     "api/parse.py": {
-      "maxDuration": 120,
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "app/api/analyze/route.ts": {
+      "maxDuration": 60,
       "memory": 1024
     }
   }

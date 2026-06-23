@@ -2,13 +2,14 @@ import { spawn } from "child_process";
 import path from "path";
 import { PresentationMetadata } from "@/lib/types";
 
+const ON_VERCEL = Boolean(process.env.VERCEL);
+
 export async function parsePptx(
   buffer: Buffer,
   filename: string,
 ): Promise<PresentationMetadata> {
   const base64 = buffer.toString("base64");
 
-  // Try Vercel Python serverless function
   const parseUrl =
     process.env.PARSE_API_URL ??
     (process.env.VERCEL_URL
@@ -16,18 +17,36 @@ export async function parsePptx(
       : null);
 
   if (parseUrl) {
-    try {
-      const res = await fetch(parseUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_base64: base64, filename, render_images: true }),
-      });
-      if (res.ok) {
-        return (await res.json()) as PresentationMetadata;
-      }
-    } catch {
-      // fall through to local CLI
+    const res = await fetch(parseUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_base64: base64,
+        filename,
+        // LibreOffice/PowerPoint are unavailable on Vercel — skip PNG rendering.
+        render_images: !ON_VERCEL,
+      }),
+    });
+
+    if (res.ok) {
+      return (await res.json()) as PresentationMetadata;
     }
+
+    const body = await res.text();
+    let detail = body.slice(0, 200);
+    try {
+      const parsed = JSON.parse(body) as { error?: string };
+      if (parsed.error) detail = parsed.error;
+    } catch {
+      // plain-text / HTML gateway response
+    }
+    throw new Error(
+      `PPTX parse failed (${res.status}): ${detail || res.statusText}`,
+    );
+  }
+
+  if (ON_VERCEL) {
+    throw new Error("PPTX parser is not configured (missing PARSE_API_URL).");
   }
 
   return parsePptxLocal(buffer, filename);

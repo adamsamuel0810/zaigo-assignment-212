@@ -12,7 +12,7 @@ interface UploadPageProps {
 
 export function UploadPage({ onUpload, error }: UploadPageProps) {
   const [dragOver, setDragOver] = useState(false);
-  const [skipAi, setSkipAi] = useState(false);
+  const [skipAi, setSkipAi] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const handleFile = useCallback(

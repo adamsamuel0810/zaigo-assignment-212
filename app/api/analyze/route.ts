@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { analyzePresentation } from "@/lib/services/analysis";
 
-export const maxDuration = 120;
+/** Hobby plan caps at 60s; keep within limit to avoid 504 gateway timeouts. */
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {

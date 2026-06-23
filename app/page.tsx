@@ -34,7 +34,20 @@ export default function HomePage() {
         signal: controller.signal,
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: PresentationAnalysis & { error?: string; status?: string };
+
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        if (res.status === 504) {
+          throw new Error(
+            "Analysis timed out. Try enabling “Skip AI checks” or use a smaller deck.",
+          );
+        }
+        throw new Error(text.slice(0, 200) || `Request failed (${res.status})`);
+      }
 
       if (!res.ok) {
         setError(data.error ?? "Analysis failed");

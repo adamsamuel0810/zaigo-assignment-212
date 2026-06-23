@@ -22,7 +22,7 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801
 
             file_b64 = payload.get("file_base64")
             filename = payload.get("filename", "presentation.pptx")
-            render_images = payload.get("render_images", True)
+            render_images = payload.get("render_images", False)
 
             if not file_b64:
                 self._respond(400, {"error": "file_base64 is required"})
