@@ -12,7 +12,8 @@ interface SlidePreviewProps {
   findings: Finding[];
   selectedFindingId?: string;
   hoveredFindingId?: string;
-  slideImageBase64?: string;
+  /** Either a base64 PNG (local render) or an https URL (ConvertAPI on Vercel). */
+  slideImage?: string;
 }
 
 interface Dimensions {
@@ -174,14 +175,19 @@ export function SlidePreview({
   findings,
   selectedFindingId,
   hoveredFindingId,
-  slideImageBase64,
+  slideImage,
 }: SlidePreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [container, setContainer] = useState<Dimensions>({ width: 0, height: 0 });
 
   const slideAspect = slideHeight / slideWidth;
   const focusedId = hoveredFindingId ?? selectedFindingId;
-  const useImagePreview = Boolean(slideImageBase64);
+  const useImagePreview = Boolean(slideImage);
+  const imageSrc = slideImage
+    ? slideImage.startsWith("http")
+      ? slideImage
+      : `data:image/png;base64,${slideImage}`
+    : undefined;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -276,7 +282,7 @@ export function SlidePreview({
             {useImagePreview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={`data:image/png;base64,${slideImageBase64}`}
+                src={imageSrc}
                 alt={`Slide ${slide.slide_number}`}
                 className="absolute inset-0 h-full w-full object-fill"
                 draggable={false}

@@ -31,7 +31,10 @@ export async function parsePptxInBrowser(
     body: JSON.stringify({
       file_base64,
       filename: file.name,
-      render_images: false,
+      // Ask for rendered PNGs; the parser returns [] if no backend is
+      // configured (e.g. no CONVERTAPI_SECRET on Vercel) — falls back to the
+      // geometry-only placeholder preview.
+      render_images: true,
     }),
     signal,
   });

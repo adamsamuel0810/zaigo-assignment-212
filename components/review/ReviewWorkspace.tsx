@@ -146,7 +146,7 @@ export function ReviewWorkspace({ initialAnalysis, onBack }: ReviewWorkspaceProp
                 findings={slideAnalysis?.findings ?? []}
                 selectedFindingId={selectedFindingId}
                 hoveredFindingId={hoveredFindingId}
-                slideImageBase64={
+                slideImage={
                   analysis.metadata.slide_images?.[selectedSlide - 1]
                 }
               />

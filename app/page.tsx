@@ -44,18 +44,27 @@ export default function HomePage() {
     try {
       let res: Response;
 
+      let renderedImages: string[] | undefined;
+
       try {
         const metadata: PresentationMetadata = await parsePptxInBrowser(
           file,
           controller.signal,
         );
 
+        // Rendered PNGs can be several MB and would blow past Vercel's 4.5MB
+        // request body limit on /api/analyze. Strip them for the analyze call
+        // and re-attach to the result client-side for the preview.
+        renderedImages = metadata.slide_images;
+        const { slide_images: _omit, ...metadataForAnalysis } = metadata;
+        void _omit;
+
         res = await fetch("/api/analyze", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            metadata,
+            metadata: metadataForAnalysis,
             filename: file.name,
             skipAi: options.skipAi,
           }),
@@ -102,7 +111,12 @@ export default function HomePage() {
         return;
       }
 
-      setAnalysis(data as PresentationAnalysis);
+      const analysisResult = data as PresentationAnalysis;
+      if (renderedImages?.length && analysisResult.metadata) {
+        analysisResult.metadata.slide_images = renderedImages;
+      }
+
+      setAnalysis(analysisResult);
       setView("review");
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {

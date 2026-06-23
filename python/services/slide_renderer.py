@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -149,6 +154,64 @@ def _render_via_libreoffice(pptx_path: Path) -> list[bytes]:
         return _pdf_to_png_bytes(pdf_path)
 
 
+def _render_via_convertapi(file_bytes: bytes, filename: str) -> list[str]:
+    """
+    Render via the ConvertAPI cloud service (pptx -> png). Works in serverless
+    environments (Vercel) where PowerPoint/LibreOffice are unavailable.
+
+    Requires CONVERTAPI_SECRET. Uses a single synchronous JSON request with the
+    deck inlined as base64. Files are stored by ConvertAPI (StoreFile=True) and
+    returned as URLs so the parse response stays small (Vercel caps response
+    bodies at ~4.5MB, which inline base64 PNGs would exceed for large decks).
+    """
+    secret = os.environ.get("CONVERTAPI_SECRET") or os.environ.get("CONVERTAPI_TOKEN")
+    if not secret:
+        return []
+
+    url = "https://v2.convertapi.com/convert/pptx/to/png?Secret=" + urllib.parse.quote(
+        secret
+    )
+    payload = {
+        "Parameters": [
+            {
+                "Name": "File",
+                "FileValue": {
+                    "Name": filename or "deck.pptx",
+                    "Data": base64.b64encode(file_bytes).decode("ascii"),
+                },
+            },
+            {"Name": "StoreFile", "Value": True},
+            {"Name": "ImageResolution", "Value": 150},
+        ]
+    }
+
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "ignore")[:200]
+        logger.warning("ConvertAPI HTTP %s: %s", exc.code, detail)
+        return []
+    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+        logger.warning("ConvertAPI request failed: %s", exc)
+        return []
+
+    images: list[str] = []
+    for entry in body.get("Files", []):
+        # Prefer hosted URL (StoreFile=True); fall back to inline base64.
+        ref = entry.get("Url") or entry.get("FileData")
+        if ref:
+            images.append(ref)
+    return images
+
+
 def render_slide_images(file_bytes: bytes, filename: str) -> list[str]:
     """
     Convert PPTX to base64-encoded PNG images (one per slide).
@@ -159,14 +222,19 @@ def render_slide_images(file_bytes: bytes, filename: str) -> list[str]:
         pptx_path = Path(tmp) / f"deck{suffix}"
         pptx_path.write_bytes(file_bytes)
 
-        # Windows PowerPoint — highest fidelity on Windows
+        # Windows PowerPoint — highest fidelity, free, offline (local dev)
         png_bytes = _render_via_powerpoint_com(pptx_path)
         if png_bytes:
             return [base64.b64encode(img).decode("ascii") for img in png_bytes]
 
-        # LibreOffice + PyMuPDF — cross-platform
+        # LibreOffice + PyMuPDF — cross-platform, free, offline (local/Docker)
         png_bytes = _render_via_libreoffice(pptx_path)
-        return [base64.b64encode(img).decode("ascii") for img in png_bytes]
+        if png_bytes:
+            return [base64.b64encode(img).decode("ascii") for img in png_bytes]
+
+        # ConvertAPI — cloud fallback for serverless (Vercel) where no local
+        # rendering backend exists. Returns base64 PNGs directly.
+        return _render_via_convertapi(file_bytes, filename)
 
 
 def get_renderer_status() -> dict[str, bool]:
@@ -174,6 +242,9 @@ def get_renderer_status() -> dict[str, bool]:
         "libreoffice": _find_libreoffice() is not None,
         "powerpoint_com": sys.platform == "win32",
         "pymupdf": _has_pymupdf(),
+        "convertapi": bool(
+            os.environ.get("CONVERTAPI_SECRET") or os.environ.get("CONVERTAPI_TOKEN")
+        ),
     }
 
 
