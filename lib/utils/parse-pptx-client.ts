@@ -1,17 +1,5 @@
 import { PresentationMetadata } from "@/lib/types";
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(",") ? result.split(",")[1] : result;
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
+import { fileToBase64 } from "@/lib/utils/file-to-base64";
 
 /**
  * Parse a PPTX via the browser so the request carries the user's session
@@ -31,10 +19,8 @@ export async function parsePptxInBrowser(
     body: JSON.stringify({
       file_base64,
       filename: file.name,
-      // Ask for rendered PNGs; the parser returns [] if no backend is
-      // configured (e.g. no CONVERTAPI_SECRET on Vercel) — falls back to the
-      // geometry-only placeholder preview.
-      render_images: true,
+      // Metadata only — slide rendering runs separately via /api/render-slides
+      render_images: false,
     }),
     signal,
   });

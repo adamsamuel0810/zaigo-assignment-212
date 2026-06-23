@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Finding, SlideMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { resolveFindingHighlights } from "@/lib/utils/finding-highlight";
+import { HtmlSlideFallback } from "@/components/slides/HtmlSlideFallback";
 
 interface SlidePreviewProps {
   slide: SlideMetadata;
@@ -92,82 +93,6 @@ function fitSlideDimensions(
   return { width, height };
 }
 
-function HtmlSlideFallback({
-  slide,
-  scale,
-  fontScale,
-}: {
-  slide: SlideMetadata;
-  scale: number;
-  fontScale: number;
-}) {
-  return (
-    <>
-      {slide.title && (
-        <div
-          className="absolute"
-          style={{
-            left: slide.title.position.left_inches * scale,
-            top: slide.title.position.top_inches * scale,
-            width: slide.title.position.width_inches * scale,
-          }}
-        >
-          {slide.title.paragraphs.map((p, i) => (
-            <p key={i} style={{ fontSize: Math.max(10, 10 * fontScale) }}>
-              {p.runs.map((run, j) => (
-                <span
-                  key={j}
-                  style={{
-                    fontWeight: run.bold ? "bold" : "normal",
-                    fontStyle: run.italic ? "italic" : "normal",
-                    color: run.color?.hex ?? undefined,
-                  }}
-                >
-                  {run.text}
-                </span>
-              ))}
-            </p>
-          ))}
-        </div>
-      )}
-
-      {slide.texts.map((text) => (
-        <div
-          key={text.shape_id}
-          className="absolute"
-          style={{
-            left: text.position.left_inches * scale,
-            top: text.position.top_inches * scale,
-            width: text.position.width_inches * scale,
-          }}
-        >
-          {text.paragraphs.map((p, i) => (
-            <p
-              key={i}
-              style={{
-                fontSize: Math.max(7, 8 * fontScale),
-                paddingLeft: (p.indent_inches ?? 0) * scale,
-              }}
-            >
-              {p.runs.map((run, j) => (
-                <span
-                  key={j}
-                  style={{
-                    fontWeight: run.bold ? "bold" : "normal",
-                    color: run.color?.hex ?? undefined,
-                  }}
-                >
-                  {run.text}
-                </span>
-              ))}
-            </p>
-          ))}
-        </div>
-      ))}
-    </>
-  );
-}
-
 export function SlidePreview({
   slide,
   slideWidth,
@@ -216,6 +141,8 @@ export function SlidePreview({
   const visibleFindings = findings.filter((f) => !f.rejected);
 
   const highlights = useMemo(() => {
+    if (!focusedId) return [];
+
     const items: RenderHighlight[] = [];
 
     for (const finding of visibleFindings) {
@@ -227,22 +154,20 @@ export function SlidePreview({
       );
 
       let state: HighlightState = "dimmed";
-      if (focusedId) {
-        if (finding.id === hoveredFindingId) state = "hovered";
-        else if (finding.id === selectedFindingId && !hoveredFindingId) {
-          state = "selected";
-        } else if (finding.id !== focusedId) {
-          state = "dimmed";
-        } else {
-          state = "hovered";
-        }
+      if (finding.id === hoveredFindingId) state = "hovered";
+      else if (finding.id === selectedFindingId && !hoveredFindingId) {
+        state = "selected";
+      } else if (finding.id !== focusedId) {
+        state = "dimmed";
+      } else {
+        state = "hovered";
       }
 
       regions.forEach((region, index) => {
         items.push({
           key: `${finding.id}-${index}`,
           position: region.position,
-          state: focusedId && finding.id !== focusedId ? "dimmed" : state,
+          state: finding.id !== focusedId ? "dimmed" : state,
           label: region.label,
         });
       });
@@ -267,8 +192,10 @@ export function SlidePreview({
       {displayWidth > 0 && displayHeight > 0 && (
         <div className="relative flex flex-col items-center">
           {!useImagePreview && (
-            <p className="mb-2 text-center text-[10px] text-[var(--warning)]">
-              Install LibreOffice or use Windows PowerPoint for pixel-accurate preview
+            <p className="mb-2 text-center text-[10px] text-[var(--muted)]">
+              Approximate preview from parsed metadata. For pixel-accurate slides on
+              Vercel, set{" "}
+              <code className="text-[9px]">CONVERTAPI_SECRET</code> in env vars.
             </p>
           )}
 

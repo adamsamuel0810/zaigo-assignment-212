@@ -6,6 +6,7 @@ import { AnalyzingPage } from "@/components/upload/AnalyzingPage";
 import { ReviewWorkspace } from "@/components/review/ReviewWorkspace";
 import { PresentationAnalysis, PresentationMetadata } from "@/lib/types";
 import { parsePptxInBrowser } from "@/lib/utils/parse-pptx-client";
+import { renderSlidesInBrowser } from "@/lib/utils/render-slides-client";
 
 type AppView = "upload" | "analyzing" | "review";
 
@@ -52,24 +53,30 @@ export default function HomePage() {
           controller.signal,
         );
 
-        // Rendered PNGs can be several MB and would blow past Vercel's 4.5MB
-        // request body limit on /api/analyze. Strip them for the analyze call
-        // and re-attach to the result client-side for the preview.
-        renderedImages = metadata.slide_images;
         const { slide_images: _omit, ...metadataForAnalysis } = metadata;
         void _omit;
 
-        res = await fetch("/api/analyze", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            metadata: metadataForAnalysis,
-            filename: file.name,
-            skipAi: options.skipAi,
+        const [analyzeRes, renderRes] = await Promise.all([
+          fetch("/api/analyze", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              metadata: metadataForAnalysis,
+              filename: file.name,
+              skipAi: options.skipAi,
+            }),
+            signal: controller.signal,
           }),
-          signal: controller.signal,
-        });
+          renderSlidesInBrowser(file, controller.signal).catch(() => ({
+            slide_images: [] as string[],
+          })),
+        ]);
+
+        res = analyzeRes;
+        if (renderRes.slide_images.length > 0) {
+          renderedImages = renderRes.slide_images;
+        }
       } catch (parseError) {
         if (parseError instanceof Error && parseError.name === "AbortError") {
           throw parseError;

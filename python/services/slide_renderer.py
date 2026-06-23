@@ -188,7 +188,10 @@ def _render_via_convertapi(file_bytes: bytes, filename: str) -> list[str]:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {secret}",
+        },
         method="POST",
     )
 
