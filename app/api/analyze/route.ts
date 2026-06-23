@@ -1,11 +1,40 @@
 import { NextResponse } from "next/server";
-import { analyzePresentation } from "@/lib/services/analysis";
+import {
+  analyzeFromMetadata,
+  analyzePresentation,
+} from "@/lib/services/analysis";
+import { PresentationMetadata } from "@/lib/types";
 
 /** Hobby plan caps at 60s; keep within limit to avoid 504 gateway timeouts. */
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    const contentType = request.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as {
+        metadata?: PresentationMetadata;
+        filename?: string;
+        includeLow?: boolean;
+        skipAi?: boolean;
+      };
+
+      if (!body.metadata || !body.filename) {
+        return NextResponse.json(
+          { error: "metadata and filename are required" },
+          { status: 400 },
+        );
+      }
+
+      const analysis = await analyzeFromMetadata(body.metadata, body.filename, {
+        includeLowConfidence: body.includeLow === true,
+        skipAi: body.skipAi === true,
+      });
+
+      return NextResponse.json(analysis);
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const includeLow = formData.get("includeLow") === "true";

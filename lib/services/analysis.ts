@@ -15,37 +15,13 @@ import {
 } from "@/lib/utils/deduplication";
 import { parsePptx } from "@/lib/utils/parse-pptx";
 
-export async function analyzePresentation(
-  buffer: Buffer,
+export async function analyzeFromMetadata(
+  metadata: PresentationMetadata,
   filename: string,
   options: { includeLowConfidence?: boolean; skipAi?: boolean } = {},
 ): Promise<PresentationAnalysis> {
   const id = uuidv4();
   const analyzedAt = new Date().toISOString();
-
-  let metadata: PresentationMetadata;
-  try {
-    metadata = await parsePptx(buffer, filename);
-  } catch (error) {
-    return {
-      id,
-      filename,
-      analyzed_at: analyzedAt,
-      slide_count: 0,
-      slides: [],
-      findings: [],
-      metadata: {
-        filename,
-        slide_width_inches: 0,
-        slide_height_inches: 0,
-        slide_count: 0,
-        slides: [],
-      },
-      progress: 0,
-      status: "error",
-      error: error instanceof Error ? error.message : "Failed to parse PPTX",
-    };
-  }
 
   const deterministicFindings = runDeterministicRules(metadata);
 
@@ -85,5 +61,40 @@ export async function analyzePresentation(
     progress: 100,
     status: "complete",
   };
+}
+
+export async function analyzePresentation(
+  buffer: Buffer,
+  filename: string,
+  options: { includeLowConfidence?: boolean; skipAi?: boolean } = {},
+): Promise<PresentationAnalysis> {
+  const analyzedAt = new Date().toISOString();
+  const id = uuidv4();
+
+  let metadata: PresentationMetadata;
+  try {
+    metadata = await parsePptx(buffer, filename);
+  } catch (error) {
+    return {
+      id,
+      filename,
+      analyzed_at: analyzedAt,
+      slide_count: 0,
+      slides: [],
+      findings: [],
+      metadata: {
+        filename,
+        slide_width_inches: 0,
+        slide_height_inches: 0,
+        slide_count: 0,
+        slides: [],
+      },
+      progress: 0,
+      status: "error",
+      error: error instanceof Error ? error.message : "Failed to parse PPTX",
+    };
+  }
+
+  return analyzeFromMetadata(metadata, filename, options);
 }
 

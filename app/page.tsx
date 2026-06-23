@@ -4,9 +4,27 @@ import { useState, useRef } from "react";
 import { UploadPage } from "@/components/upload/UploadPage";
 import { AnalyzingPage } from "@/components/upload/AnalyzingPage";
 import { ReviewWorkspace } from "@/components/review/ReviewWorkspace";
-import { PresentationAnalysis } from "@/lib/types";
+import { PresentationAnalysis, PresentationMetadata } from "@/lib/types";
+import { parsePptxInBrowser } from "@/lib/utils/parse-pptx-client";
 
 type AppView = "upload" | "analyzing" | "review";
+
+async function readAnalysisResponse(
+  res: Response,
+): Promise<PresentationAnalysis & { error?: string; status?: string }> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return res.json();
+  }
+
+  const text = await res.text();
+  if (res.status === 504) {
+    throw new Error(
+      "Analysis timed out. Try enabling “Skip AI checks” or use a smaller deck.",
+    );
+  }
+  throw new Error(text.slice(0, 200) || `Request failed (${res.status})`);
+}
 
 export default function HomePage() {
   const [view, setView] = useState<AppView>("upload");
@@ -23,31 +41,54 @@ export default function HomePage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const formData = new FormData();
-    formData.append("file", file);
-    if (options.skipAi) formData.append("skipAi", "true");
-
     try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
+      let res: Response;
 
-      const contentType = res.headers.get("content-type") ?? "";
-      let data: PresentationAnalysis & { error?: string; status?: string };
+      try {
+        const metadata: PresentationMetadata = await parsePptxInBrowser(
+          file,
+          controller.signal,
+        );
 
-      if (contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        if (res.status === 504) {
-          throw new Error(
-            "Analysis timed out. Try enabling “Skip AI checks” or use a smaller deck.",
-          );
+        res = await fetch("/api/analyze", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            metadata,
+            filename: file.name,
+            skipAi: options.skipAi,
+          }),
+          signal: controller.signal,
+        });
+      } catch (parseError) {
+        if (parseError instanceof Error && parseError.name === "AbortError") {
+          throw parseError;
         }
-        throw new Error(text.slice(0, 200) || `Request failed (${res.status})`);
+
+        const unavailable =
+          parseError instanceof TypeError ||
+          (parseError instanceof Error &&
+            (parseError.message === "PPTX_PARSE_UNAVAILABLE" ||
+              parseError.message.includes("(404)")));
+
+        if (!unavailable) {
+          throw parseError;
+        }
+
+        // Local `next dev` has no Python /api/parse — fall back to server-side parse.
+        const formData = new FormData();
+        formData.append("file", file);
+        if (options.skipAi) formData.append("skipAi", "true");
+
+        res = await fetch("/api/analyze", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
       }
+
+      const data = await readAnalysisResponse(res);
 
       if (!res.ok) {
         setError(data.error ?? "Analysis failed");
