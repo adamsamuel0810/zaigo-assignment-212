@@ -7,6 +7,25 @@ function getSecret(): string | undefined {
 }
 
 /**
+ * ConvertAPI names slide 1 `deck.png` and slides 2..N `deck-2.png` … `deck-N.png`.
+ * Sorting by full FileName puts `deck.png` after `deck-2.png` (`.` > `-`), which
+ * rotates every preview by one slide on Vercel.
+ */
+function slideIndexFromFileName(fileName: string): number {
+  const match = fileName.match(/-(\d+)\.[^.]+$/i);
+  if (match) return Number.parseInt(match[1], 10);
+  return 1;
+}
+
+function sortConvertApiSlideFiles<T extends { FileName?: string }>(files: T[]): T[] {
+  return [...files].sort(
+    (a, b) =>
+      slideIndexFromFileName(a.FileName ?? "") -
+      slideIndexFromFileName(b.FileName ?? ""),
+  );
+}
+
+/**
  * Render PPTX slides to PNG via ConvertAPI.
  * Accepts multipart FormData (preferred) or JSON { file_base64, filename }.
  */
@@ -84,11 +103,7 @@ export async function POST(request: Request) {
       Files?: Array<{ FileName?: string; Url?: string; FileData?: string }>;
     };
 
-    const files = [...(data.Files ?? [])].sort((a, b) =>
-      (a.FileName ?? "").localeCompare(b.FileName ?? "", undefined, {
-        numeric: true,
-      }),
-    );
+    const files = sortConvertApiSlideFiles(data.Files ?? []);
 
     const slide_images = files
       .map((f) => f.Url ?? f.FileData)

@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,14 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 PP_SAVE_AS_PDF = 32
+
+
+def _slide_index_from_convertapi_filename(name: str) -> int:
+    """Slide 1 is `deck.png`; slides 2..N are `deck-2.png` … `deck-N.png`."""
+    match = re.search(r"-(\d+)\.[^.]+$", name, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return 1
 
 
 def _find_libreoffice() -> str | None:
@@ -207,7 +216,13 @@ def _render_via_convertapi(file_bytes: bytes, filename: str) -> list[str]:
         return []
 
     images: list[str] = []
-    for entry in body.get("Files", []):
+    entries = sorted(
+        body.get("Files", []),
+        key=lambda entry: _slide_index_from_convertapi_filename(
+            entry.get("FileName", "")
+        ),
+    )
+    for entry in entries:
         # Prefer hosted URL (StoreFile=True); fall back to inline base64.
         ref = entry.get("Url") or entry.get("FileData")
         if ref:
