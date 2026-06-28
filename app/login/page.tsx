@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,14 +18,15 @@ export default function LoginPage() {
     const res = await fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ email, password }),
     });
 
     if (res.ok) {
       router.push("/");
       router.refresh();
     } else {
-      setError("Invalid password. Please try again.");
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      setError(data?.error ?? "Invalid email or password. Please try again.");
     }
     setLoading(false);
   }
@@ -107,6 +109,26 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             <div>
               <label
+                htmlFor="email"
+                className="mb-1.5 block text-sm font-medium text-[var(--foreground)]"
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-lg border border-[var(--border-strong)] bg-white px-3.5 py-2.5 text-sm shadow-sm transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                placeholder="you@acme.com"
+                autoComplete="email"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label
                 htmlFor="password"
                 className="mb-1.5 block text-sm font-medium text-[var(--foreground)]"
               >
@@ -118,9 +140,9 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-lg border border-[var(--border-strong)] bg-white px-3.5 py-2.5 text-sm shadow-sm transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-                placeholder="Enter access password"
+                placeholder="Enter your password"
+                autoComplete="current-password"
                 required
-                autoFocus
               />
             </div>
 

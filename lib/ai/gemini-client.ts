@@ -40,17 +40,10 @@ export function parseGeminiRetryDelayMs(message: string): number {
 
 export function formatGeminiError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (!isGeminiQuotaError(message)) {
-    return message;
+  if (isGeminiQuotaError(message)) {
+    return "Gemini free-tier quota exceeded for this model. Wait a minute and retry, or set GEMINI_MODEL=gemini-2.5-flash-lite.";
   }
-
-  return [
-    "Gemini free-tier quota exceeded for this model.",
-    "Set GEMINI_MODEL=gemini-2.5-flash-lite in .env.local (gemini-2.0-flash often has zero free quota).",
-    "Wait a minute and retry, or check usage at https://aistudio.google.com/",
-    "Details:",
-    message.split("\n")[0],
-  ].join(" ");
+  return message;
 }
 
 export function sleep(ms: number): Promise<void> {

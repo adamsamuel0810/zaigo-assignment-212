@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { aiNotConfiguredMessage, isAiConfigured } from "@/lib/ai/config";
+import { humanizeError } from "@/lib/utils/user-facing-errors";
 import { Finding, SlideMetadata } from "@/lib/types";
 import { canPreviewFix } from "@/lib/services/auto-fix";
 import { resolveAutoFixPreview } from "@/lib/openai/auto-fix";
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
   try {
     if (!isAiConfigured()) {
       return NextResponse.json(
-        { error: aiNotConfiguredMessage() },
+        { error: humanizeError(aiNotConfiguredMessage(), "auto-fix").message },
         { status: 503 },
       );
     }
@@ -51,9 +52,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Auto-fix failed";
+    const raw = error instanceof Error ? error.message : "Auto-fix failed";
+    const friendly = humanizeError(raw, "auto-fix");
     const status =
-      message.includes("too long") || message.includes("timed out") ? 504 : 500;
-    return NextResponse.json({ error: message }, { status });
+      raw.includes("too long") || raw.includes("timed out") ? 504 : 500;
+    return NextResponse.json({ error: friendly.message }, { status });
   }
 }

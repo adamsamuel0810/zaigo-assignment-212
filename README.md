@@ -48,15 +48,17 @@ pip install -r requirements.txt
 npm run dev
 ```
 
-Visit `http://localhost:3000` and sign in with the password from `.env.local` (default: `acme2024`).
+Visit `http://localhost:3000` and sign in with the email and password from `.env.local` (defaults: `reviewer@acme.com` / `acme2024`).
 
 > **Windows note:** If `npm run dev` crashes with `Illegal instruction`, the project already uses Webpack instead of Turbopack (`next dev --webpack`). If issues persist, use Node.js 20 LTS from [nodejs.org](https://nodejs.org).
 
 ### Environment Variables
 
-| Variable         | Description                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `APP_PASSWORD`   | Login password for the app                                                                        |
+| Variable           | Description                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| `APP_EMAIL`        | Allowed login email (default: `reviewer@acme.com`)                                                |
+| `APP_PASSWORD`     | Login password for the app                                                                        |
+| `APP_AUTH_SECRET`  | Optional — HMAC secret for signed session cookies (defaults to `APP_PASSWORD`)                    |
 | `GEMINI_API_KEY` | Optional — free AI key from [Google AI Studio](https://aistudio.google.com/apikey)                |
 | `GEMINI_MODEL`   | Gemini model (default: `gemini-2.5-flash-lite`; avoid `gemini-2.0-flash` — often zero free quota) |
 | `AI_PROVIDER`    | `gemini` or `openai` when both keys are set (default: Gemini if key present)                      |
@@ -72,11 +74,12 @@ npm test
 ### Deploy to Vercel
 
 1. Push to GitHub and import to Vercel
-2. Set `APP_PASSWORD` and `GEMINI_API_KEY` (or `OPENAI_API_KEY`) in Vercel environment variables
+2. Set `APP_EMAIL`, `APP_PASSWORD`, and `GEMINI_API_KEY` (or `OPENAI_API_KEY`) in Vercel environment variables
 3. Python dependencies are installed from `requirements.txt` automatically
 
 ## Credentials (for reviewers)
 
+- **Email:** Set via `APP_EMAIL` env var (default demo: `reviewer@acme.com`)
 - **Password:** Set via `APP_PASSWORD` env var (default demo: `acme2024`)
 
 ## Rule Categories

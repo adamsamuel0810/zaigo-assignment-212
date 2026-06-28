@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, FileText, LogOut, RefreshCw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Finding, PresentationAnalysis } from "@/lib/types";
@@ -12,12 +12,14 @@ import {
   type SavedAiFix,
 } from "@/lib/utils/saved-ai-fixes";
 import { renderSlidesInBrowser } from "@/lib/utils/render-slides-client";
+import { humanizeError } from "@/lib/utils/user-facing-errors";
 import { SlideSidebar } from "@/components/slides/SlideSidebar";
 import { SlidePreview } from "@/components/slides/SlidePreview";
 import { FindingsPanel } from "@/components/findings/FindingsPanel";
 import { FinalReportModal } from "@/components/findings/FinalReportModal";
 import { FixPreviewModal } from "@/components/findings/FixPreviewModal";
 import { AppHeader, StatPill } from "@/components/layout/AppHeader";
+import { StatusAlert } from "@/components/ui/StatusAlert";
 
 interface ReviewWorkspaceProps {
   initialAnalysis: PresentationAnalysis;
@@ -51,6 +53,10 @@ export function ReviewWorkspace({
   const [savedAiFixes, setSavedAiFixes] = useState<Record<string, SavedAiFix>>({});
 
   const hasSlideImages = Boolean(analysis.metadata.slide_images?.length);
+  const renderPreviewAlert = useMemo(() => {
+    if (!renderError || renderingSlides) return null;
+    return humanizeError(renderError, "preview");
+  }, [renderError, renderingSlides]);
 
   useEffect(() => {
     if (!uploadFile || hasSlideImages) return;
@@ -299,33 +305,32 @@ export function ReviewWorkspace({
             )}
           </div>
           <div className="min-h-0 flex-1 overflow-hidden p-3 lg:p-4">
-            {!hasSlideImages && (renderError || renderingSlides) && (
-              <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+            {!hasSlideImages && (renderingSlides || renderPreviewAlert) && (
+              <div className="mb-3">
                 {renderingSlides ? (
-                  <span>Rendering pixel-accurate slide previews…</span>
-                ) : renderError?.includes("CONVERTAPI_SECRET") ? (
-                  <span>
-                    Pixel-accurate previews need{" "}
-                    <code className="rounded bg-amber-100 px-1">
-                      CONVERTAPI_SECRET
-                    </code>{" "}
-                    in Vercel env vars (free at convertapi.com), then redeploy.
-                  </span>
-                ) : (
-                  <span className="flex flex-wrap items-center gap-2">
-                    Preview render failed: {renderError}
+                  <StatusAlert variant="info" title="Rendering slide previews">
+                    Building pixel-accurate previews for side-by-side review.
+                  </StatusAlert>
+                ) : renderPreviewAlert ? (
+                  <div className="space-y-2">
+                    <StatusAlert
+                      variant={renderPreviewAlert.variant}
+                      title={renderPreviewAlert.title}
+                    >
+                      {renderPreviewAlert.message}
+                    </StatusAlert>
                     {uploadFile && (
                       <button
                         type="button"
                         onClick={handleRetryRender}
-                        className="inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-0.5 text-[10px] font-medium hover:bg-amber-100"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface)]"
                       >
-                        <RefreshCw className="h-3 w-3" />
-                        Retry
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Retry preview render
                       </button>
                     )}
-                  </span>
-                )}
+                  </div>
+                ) : null}
               </div>
             )}
             {slideMeta && (

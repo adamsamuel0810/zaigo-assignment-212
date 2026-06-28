@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Upload, Shield, GitPullRequest, Sparkles, FileType2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { humanizeError } from "@/lib/utils/user-facing-errors";
 import { AppHeader, FeatureCard } from "@/components/layout/AppHeader";
+import { StatusAlert } from "@/components/ui/StatusAlert";
 
 interface UploadPageProps {
   onUpload: (file: File, options: { skipAi: boolean }) => void;
@@ -14,6 +16,10 @@ export function UploadPage({ onUpload, error }: UploadPageProps) {
   const [dragOver, setDragOver] = useState(false);
   const [skipAi, setSkipAi] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const uploadError = useMemo(
+    () => (error ? humanizeError(error, "upload") : null),
+    [error],
+  );
 
   const handleFile = useCallback(
     (file: File) => {
@@ -143,10 +149,14 @@ export function UploadPage({ onUpload, error }: UploadPageProps) {
             </span>
           </label>
 
-          {error && (
-            <div className="mt-5 rounded-lg border border-red-200 bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
-              {error}
-            </div>
+          {uploadError && (
+            <StatusAlert
+              variant={uploadError.variant}
+              title={uploadError.title}
+              className="mt-5"
+            >
+              {uploadError.message}
+            </StatusAlert>
           )}
         </div>
 

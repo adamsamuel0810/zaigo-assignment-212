@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Loader2, Save, Sparkles, X } from "lucide-react";
 import { Finding, SlideMetadata } from "@/lib/types";
 import {
@@ -14,8 +14,10 @@ import {
   isAiAssistedFinding,
   type SavedAiFix,
 } from "@/lib/utils/saved-ai-fixes";
+import { humanizeError } from "@/lib/utils/user-facing-errors";
 import { SlidePreview } from "@/components/slides/SlidePreview";
 import { SeverityBadge } from "@/components/findings/badges";
+import { StatusAlert } from "@/components/ui/StatusAlert";
 
 interface FixPreviewModalProps {
   finding: Finding;
@@ -107,6 +109,25 @@ export function FixPreviewModal({
   const applied = fixResult?.applied ?? [];
   const fixedSlide = fixResult?.slide ?? slide;
   const isAiFix = isAiAssistedFinding(finding.rule_id);
+  const hasFallbackPreview = Boolean(error && fixResult?.fixable);
+
+  const previewAlert = useMemo(() => {
+    if (!error || loading) return null;
+    const friendly = humanizeError(error, "auto-fix");
+    if (hasFallbackPreview) {
+      return {
+        variant: "warning" as const,
+        title: "AI preview unavailable",
+        message: `${friendly.message} A rule-based preview is shown on the right where available.`,
+      };
+    }
+    return friendly;
+  }, [error, loading, hasFallbackPreview]);
+
+  const downloadAlert = useMemo(() => {
+    if (!downloadError) return null;
+    return humanizeError(downloadError, "download");
+  }, [downloadError]);
   const showSaveButton =
     Boolean(fixResult?.fixable) &&
     finding.accepted &&
@@ -191,8 +212,30 @@ export function FixPreviewModal({
           </button>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(260px,300px)_1fr]">
-          <aside className="max-h-[32vh] overflow-y-auto border-b border-[var(--border)] p-4 lg:max-h-none lg:border-b-0 lg:border-r lg:p-5">
+        {(previewAlert || downloadAlert) && (
+          <div className="shrink-0 space-y-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-3 sm:px-5">
+            {previewAlert && (
+              <StatusAlert
+                variant={previewAlert.variant}
+                title={previewAlert.title}
+              >
+                {previewAlert.message}
+              </StatusAlert>
+            )}
+            {downloadAlert && (
+              <StatusAlert
+                variant={downloadAlert.variant}
+                title={downloadAlert.title}
+              >
+                {downloadAlert.message}
+              </StatusAlert>
+            )}
+          </div>
+        )}
+
+        <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(280px,320px)_1fr]">
+          <aside className="flex max-h-[36vh] min-h-0 flex-col overflow-hidden border-b border-[var(--border)] lg:max-h-none lg:border-b-0 lg:border-r">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <SeverityBadge severity={finding.severity} />
               <span className="font-mono text-[10px] text-[var(--muted-light)]">
@@ -234,18 +277,12 @@ export function FixPreviewModal({
             )}
 
             {loading && (
-              <div className="mt-4 flex items-center gap-2 text-xs text-[var(--accent)]">
-                <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-xs text-[var(--muted)]">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--accent)]" />
                 {needsAiPreview(finding.rule_id)
                   ? "Generating AI fix preview…"
                   : "Applying fix…"}
               </div>
-            )}
-
-            {error && !loading && (
-              <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                {error}
-              </p>
             )}
 
             {!loading && applied.length > 0 && (
@@ -262,19 +299,21 @@ export function FixPreviewModal({
             )}
 
             {!loading && !error && applied.length === 0 && (
-              <p className="mt-4 text-xs leading-relaxed text-[var(--muted)]">
-                Could not generate a preview for this finding. Apply the
+              <StatusAlert variant="info" title="No automated preview" className="mt-4">
+                We could not generate a preview for this finding. Apply the
                 recommendation manually in PowerPoint.
-              </p>
+              </StatusAlert>
             )}
+            </div>
 
-            <p className="mt-4 text-[10px] leading-relaxed text-[var(--muted-light)]">
+            <div className="shrink-0 space-y-3 border-t border-[var(--border)] bg-[var(--surface)] p-4 lg:p-5">
+            <p className="text-[11px] leading-relaxed text-[var(--muted-light)]">
               Save each AI fix before switching slides. Download applies all
               saved AI fixes plus accepted deterministic fixes to the PPTX.
             </p>
 
             {!canDownloadFix && !loading && fixResult?.fixable && !finding.accepted && (
-              <p className="mt-2 text-[10px] text-[var(--muted)]">
+              <p className="text-[11px] text-[var(--muted)]">
                 Accept this finding to enable save.
               </p>
             )}
@@ -295,7 +334,7 @@ export function FixPreviewModal({
             )}
 
             {showSaveButton && !isSaved && !justSaved && (
-              <p className="mt-2 text-[10px] text-[var(--muted)]">
+              <p className="text-[11px] text-[var(--muted)]">
                 Save this fix, then fix other slides. Download once at the end.
               </p>
             )}
@@ -305,7 +344,7 @@ export function FixPreviewModal({
                 type="button"
                 onClick={() => void handleDownloadFix()}
                 disabled={downloading}
-                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--success)] px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-green-800 disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--success)] px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-green-800 disabled:opacity-60"
               >
                 {downloading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -320,16 +359,11 @@ export function FixPreviewModal({
             )}
 
             {isAiFix && !loading && fixResult?.fixable && savedFixCount === 0 && !isSaved && !justSaved && (
-              <p className="mt-2 text-[10px] text-amber-800">
+              <p className="text-[11px] text-[var(--warning)]">
                 Save at least one AI fix before downloading.
               </p>
             )}
-
-            {downloadError && (
-              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                {downloadError}
-              </p>
-            )}
+            </div>
           </aside>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 lg:p-4">

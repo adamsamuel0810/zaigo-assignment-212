@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  LEGACY_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  getConfiguredPassword,
+} from "@/lib/auth/credentials";
+import { verifySessionToken } from "@/lib/auth/session";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
@@ -15,10 +21,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const authCookie = request.cookies.get("acme_auth")?.value;
-  const expected = process.env.APP_PASSWORD ?? "acme2024";
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const legacyCookie = request.cookies.get(LEGACY_COOKIE_NAME)?.value;
 
-  if (authCookie !== expected) {
+  let authenticated = await verifySessionToken(sessionCookie);
+  if (!authenticated && legacyCookie) {
+    authenticated = legacyCookie === getConfiguredPassword();
+  }
+
+  if (!authenticated) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

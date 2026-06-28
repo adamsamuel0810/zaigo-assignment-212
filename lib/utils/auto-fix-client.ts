@@ -1,5 +1,6 @@
 import { AutoFixResult } from "@/lib/services/auto-fix";
 import { Finding, SlideMetadata } from "@/lib/types";
+import { humanizeError } from "@/lib/utils/user-facing-errors";
 import { friendlyHttpError, readJsonResponse } from "@/lib/utils/api-response";
 
 export type AutoFixPreviewResult = AutoFixResult & {
@@ -43,9 +44,8 @@ export async function fetchAutoFixPreview(
   }
 
   if (!res.ok) {
-    throw new Error(
-      data.error ?? friendlyHttpError(res.status, data.error ?? ""),
-    );
+    const raw = data.error ?? friendlyHttpError(res.status, data.error ?? "");
+    throw new Error(humanizeError(raw, "auto-fix").message);
   }
 
   return data;

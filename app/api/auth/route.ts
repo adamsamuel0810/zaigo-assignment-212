@@ -1,26 +1,48 @@
 import { NextResponse } from "next/server";
+import {
+  validateCredentials,
+  LEGACY_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+} from "@/lib/auth/credentials";
+import { createSessionToken } from "@/lib/auth/session";
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  maxAge: 60 * 60 * 24 * 7,
+  path: "/",
+};
 
 export async function POST(request: Request) {
-  const { password } = await request.json();
-  const expected = process.env.APP_PASSWORD ?? "acme2024";
+  const body = await request.json();
+  const email = typeof body.email === "string" ? body.email : "";
+  const password = typeof body.password === "string" ? body.password : "";
 
-  if (password === expected) {
-    const response = NextResponse.json({ success: true });
-    response.cookies.set("acme_auth", expected, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-    return response;
+  if (!email.trim() || !password) {
+    return NextResponse.json(
+      { error: "Email and password are required." },
+      { status: 400 },
+    );
   }
 
-  return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+  if (!validateCredentials(email, password)) {
+    return NextResponse.json(
+      { error: "Invalid email or password." },
+      { status: 401 },
+    );
+  }
+
+  const token = await createSessionToken(email);
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(SESSION_COOKIE_NAME, token, cookieOptions);
+  response.cookies.delete(LEGACY_COOKIE_NAME);
+  return response;
 }
 
 export async function DELETE() {
   const response = NextResponse.json({ success: true });
-  response.cookies.delete("acme_auth");
+  response.cookies.delete(SESSION_COOKIE_NAME);
+  response.cookies.delete(LEGACY_COOKIE_NAME);
   return response;
 }
