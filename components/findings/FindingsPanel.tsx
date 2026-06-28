@@ -20,6 +20,7 @@ interface FindingsPanelProps {
   onReset: (id: string) => void;
   onOpenReport: () => void;
   onPreviewFix?: (finding: Finding) => void;
+  savedFindingIds?: Set<string>;
 }
 
 export function FindingsPanel({
@@ -36,6 +37,7 @@ export function FindingsPanel({
   onReset,
   onOpenReport,
   onPreviewFix,
+  savedFindingIds,
 }: FindingsPanelProps) {
   const visible = showLowConfidence
     ? findings
@@ -99,6 +101,7 @@ export function FindingsPanel({
               onReject={onReject}
               onReset={onReset}
               onPreviewFix={onPreviewFix}
+              isSaved={savedFindingIds?.has(finding.id)}
             />
           ))
         )}

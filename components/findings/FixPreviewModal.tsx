@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Loader2, Sparkles, X } from "lucide-react";
+import { Download, Loader2, Save, Sparkles, X } from "lucide-react";
 import { Finding, SlideMetadata } from "@/lib/types";
 import {
   applyAutoFix,
@@ -10,7 +10,10 @@ import {
   type AutoFixResult,
 } from "@/lib/services/auto-fix";
 import { fetchAutoFixPreview } from "@/lib/utils/auto-fix-client";
-import { downloadFixedPptx } from "@/lib/utils/apply-fixes-client";
+import {
+  isAiAssistedFinding,
+  type SavedAiFix,
+} from "@/lib/utils/saved-ai-fixes";
 import { SlidePreview } from "@/components/slides/SlidePreview";
 import { SeverityBadge } from "@/components/findings/badges";
 
@@ -21,6 +24,10 @@ interface FixPreviewModalProps {
   slideHeight: number;
   slideImage?: string;
   uploadFile?: File | null;
+  isSaved?: boolean;
+  savedFixCount?: number;
+  onSaveFix: (saved: SavedAiFix) => void;
+  onDownloadAllFixes: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -31,6 +38,10 @@ export function FixPreviewModal({
   slideHeight,
   slideImage,
   uploadFile,
+  isSaved = false,
+  savedFixCount = 0,
+  onSaveFix,
+  onDownloadAllFixes,
   onClose,
 }: FixPreviewModalProps) {
   const [fixResult, setFixResult] = useState<AutoFixResult | null>(null);
@@ -41,6 +52,7 @@ export function FixPreviewModal({
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,23 +100,48 @@ export function FixPreviewModal({
     };
   }, [finding, slide]);
 
+  useEffect(() => {
+    setJustSaved(false);
+  }, [finding.id]);
+
   const applied = fixResult?.applied ?? [];
   const fixedSlide = fixResult?.slide ?? slide;
+  const isAiFix = isAiAssistedFinding(finding.rule_id);
+  const showSaveButton =
+    Boolean(fixResult?.fixable) &&
+    finding.accepted &&
+    isAiFix &&
+    !loading;
+
   const canDownloadFix =
     Boolean(uploadFile) &&
-    finding.accepted &&
-    Boolean(fixResult?.fixable) &&
-    (canAutoFix(finding.rule_id) || needsAiPreview(finding.rule_id) || finding.rule_id.startsWith("AI_"));
+    (savedFixCount > 0 ||
+      (finding.accepted &&
+        Boolean(fixResult?.fixable) &&
+        canAutoFix(finding.rule_id) &&
+        !needsAiPreview(finding.rule_id)));
+
+  function handleSaveFix() {
+    if (!fixResult?.fixable) return;
+    onSaveFix({
+      findingId: finding.id,
+      slideNumber: finding.slide_number,
+      ruleId: finding.rule_id,
+      title: finding.title,
+      originalSlide: slide,
+      fixedSlide: fixResult.slide,
+      applied: fixResult.applied,
+      savedAt: Date.now(),
+    });
+    setJustSaved(true);
+  }
 
   async function handleDownloadFix() {
-    if (!uploadFile || !fixResult?.fixable) return;
+    if (!uploadFile) return;
     setDownloading(true);
     setDownloadError(null);
     try {
-      await downloadFixedPptx(uploadFile, [finding], {
-        originalSlide: slide,
-        fixedSlide: fixResult.slide,
-      });
+      await onDownloadAllFixes();
     } catch (e) {
       setDownloadError(e instanceof Error ? e.message : "Download failed");
     } finally {
@@ -232,14 +269,34 @@ export function FixPreviewModal({
             )}
 
             <p className="mt-4 text-[10px] leading-relaxed text-[var(--muted-light)]">
-              Preview shows highlighted changes on the slide image. Download
-              writes preview changes into the real PPTX (AI text rewrites +
-              deterministic styling fixes).
+              Save each AI fix before switching slides. Download applies all
+              saved AI fixes plus accepted deterministic fixes to the PPTX.
             </p>
 
             {!canDownloadFix && !loading && fixResult?.fixable && !finding.accepted && (
               <p className="mt-2 text-[10px] text-[var(--muted)]">
-                Accept this finding to enable download.
+                Accept this finding to enable save.
+              </p>
+            )}
+
+            {showSaveButton && (
+              <button
+                type="button"
+                onClick={handleSaveFix}
+                className={`mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  isSaved || justSaved
+                    ? "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                    : "border border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100"
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                {isSaved || justSaved ? "Saved for download" : "Save fix"}
+              </button>
+            )}
+
+            {showSaveButton && !isSaved && !justSaved && (
+              <p className="mt-2 text-[10px] text-[var(--muted)]">
+                Save this fix, then fix other slides. Download once at the end.
               </p>
             )}
 
@@ -248,7 +305,7 @@ export function FixPreviewModal({
                 type="button"
                 onClick={() => void handleDownloadFix()}
                 disabled={downloading}
-                className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--success)] px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-green-800 disabled:opacity-60"
+                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--success)] px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-green-800 disabled:opacity-60"
               >
                 {downloading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -256,7 +313,16 @@ export function FixPreviewModal({
                   <Download className="h-4 w-4" />
                 )}
                 Download fixed PPTX
+                {savedFixCount > 0 && (
+                  <span className="tabular-nums">({savedFixCount} saved)</span>
+                )}
               </button>
+            )}
+
+            {isAiFix && !loading && fixResult?.fixable && savedFixCount === 0 && !isSaved && !justSaved && (
+              <p className="mt-2 text-[10px] text-amber-800">
+                Save at least one AI fix before downloading.
+              </p>
             )}
 
             {downloadError && (

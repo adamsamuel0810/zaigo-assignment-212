@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, FileText, LogOut, RefreshCw } from "lucide-react";
+import { Download, FileText, LogOut, RefreshCw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Finding, PresentationAnalysis } from "@/lib/types";
 import { updateFindingStatus } from "@/lib/services/finding-actions";
 import { canAutoFix } from "@/lib/services/auto-fix";
 import { downloadFixedPptx } from "@/lib/utils/apply-fixes-client";
+import {
+  collectSavedTextPatches,
+  type SavedAiFix,
+} from "@/lib/utils/saved-ai-fixes";
 import { renderSlidesInBrowser } from "@/lib/utils/render-slides-client";
 import { SlideSidebar } from "@/components/slides/SlideSidebar";
 import { SlidePreview } from "@/components/slides/SlidePreview";
@@ -44,6 +48,7 @@ export function ReviewWorkspace({
   const [renderError, setRenderError] = useState(initialRenderError ?? null);
   const [downloadingFixed, setDownloadingFixed] = useState(false);
   const [downloadFixedError, setDownloadFixedError] = useState<string | null>(null);
+  const [savedAiFixes, setSavedAiFixes] = useState<Record<string, SavedAiFix>>({});
 
   const hasSlideImages = Boolean(analysis.metadata.slide_images?.length);
 
@@ -110,10 +115,26 @@ export function ReviewWorkspace({
 
   function handleReject(id: string) {
     setAnalysis((prev) => updateFindingStatus(prev, id, "reject"));
+    setSavedAiFixes((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   function handleReset(id: string) {
     setAnalysis((prev) => updateFindingStatus(prev, id, "reset"));
+    setSavedAiFixes((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function handleSaveAiFix(saved: SavedAiFix) {
+    setSavedAiFixes((prev) => ({ ...prev, [saved.findingId]: saved }));
   }
 
   function handlePreviewFix(finding: Finding) {
@@ -146,17 +167,21 @@ export function ReviewWorkspace({
   const acceptedFixableCount = analysis.findings.filter(
     (f) => f.accepted && canAutoFix(f.rule_id),
   ).length;
+  const savedAiFixCount = Object.keys(savedAiFixes).length;
+  const downloadFixCount = acceptedFixableCount + savedAiFixCount;
 
   async function handleDownloadAllFixes() {
     if (!uploadFile) return;
     setDownloadingFixed(true);
     setDownloadFixedError(null);
     try {
-      await downloadFixedPptx(uploadFile, analysis.findings);
+      await downloadFixedPptx(uploadFile, analysis.findings, {
+        textPatches: collectSavedTextPatches(Object.values(savedAiFixes)),
+      });
     } catch (e) {
-      setDownloadFixedError(
-        e instanceof Error ? e.message : "Download failed",
-      );
+      const message = e instanceof Error ? e.message : "Download failed";
+      setDownloadFixedError(message);
+      throw e;
     } finally {
       setDownloadingFixed(false);
     }
@@ -197,13 +222,13 @@ export function ReviewWorkspace({
                 </span>
               )}
             </button>
-            {uploadFile && acceptedFixableCount > 0 && (
+            {uploadFile && downloadFixCount > 0 && (
               <button
                 type="button"
                 onClick={() => void handleDownloadAllFixes()}
                 disabled={downloadingFixed}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--success)] bg-[var(--success-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--success)] transition-colors hover:bg-green-100 disabled:opacity-60"
-                title="Apply accepted auto-fixes and download PPTX"
+                title="Download PPTX with all saved AI fixes and accepted deterministic fixes"
               >
                 {downloadingFixed ? (
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -211,8 +236,14 @@ export function ReviewWorkspace({
                   <Download className="h-3.5 w-3.5" />
                 )}
                 Fixed PPTX
-                <span className="tabular-nums">({acceptedFixableCount})</span>
+                <span className="tabular-nums">({downloadFixCount})</span>
               </button>
+            )}
+            {savedAiFixCount > 0 && (
+              <span className="hidden items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 md:inline-flex">
+                <Save className="h-3 w-3" />
+                {savedAiFixCount} saved AI fix{savedAiFixCount === 1 ? "" : "es"}
+              </span>
             )}
             <button
               type="button"
@@ -327,6 +358,7 @@ export function ReviewWorkspace({
             onReset={handleReset}
             onOpenReport={() => setShowReport(true)}
             onPreviewFix={handlePreviewFix}
+            savedFindingIds={new Set(Object.keys(savedAiFixes))}
           />
         </div>
       </div>
@@ -349,6 +381,10 @@ export function ReviewWorkspace({
             analysis.metadata.slide_images?.[fixPreviewFinding.slide_number - 1]
           }
           uploadFile={uploadFile}
+          isSaved={Boolean(savedAiFixes[fixPreviewFinding.id])}
+          savedFixCount={savedAiFixCount}
+          onSaveFix={handleSaveAiFix}
+          onDownloadAllFixes={handleDownloadAllFixes}
           onClose={() => setFixPreviewFinding(null)}
         />
       )}

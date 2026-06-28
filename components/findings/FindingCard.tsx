@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Eye, RotateCcw, X } from "lucide-react";
+import { Check, Eye, RotateCcw, Save, X } from "lucide-react";
 import { Finding } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { ConfidenceBadge, SeverityBadge } from "@/components/findings/badges";
@@ -17,6 +17,7 @@ interface FindingCardProps {
   onReject: (id: string) => void;
   onReset: (id: string) => void;
   onPreviewFix?: (finding: Finding) => void;
+  isSaved?: boolean;
 }
 
 export function FindingCard({
@@ -30,6 +31,7 @@ export function FindingCard({
   onReject,
   onReset,
   onPreviewFix,
+  isSaved,
 }: FindingCardProps) {
   const showFixPreview = finding.accepted && canPreviewFix(finding.rule_id);
 
@@ -70,6 +72,12 @@ export function FindingCard({
         {finding.source === "ai" && (
           <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
             AI
+          </span>
+        )}
+        {isSaved && (
+          <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+            <Save className="h-3 w-3" />
+            Saved
           </span>
         )}
         <span className="ml-auto font-mono text-[10px] text-[var(--muted-light)]">
