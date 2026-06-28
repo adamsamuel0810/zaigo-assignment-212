@@ -8,6 +8,7 @@ interface ApplyFixesPayload {
   file_base64: string;
   filename: string;
   findings: unknown[];
+  text_patches?: unknown[];
 }
 
 async function applyFixesLocal(payload: ApplyFixesPayload): Promise<Record<string, unknown>> {

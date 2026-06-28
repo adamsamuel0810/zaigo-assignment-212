@@ -15,15 +15,16 @@ def run_apply_fixes(payload: dict[str, Any]) -> dict[str, Any]:
 
     if not file_b64:
         raise ValueError("file_base64 is required")
-    if not findings:
-        raise ValueError("findings is required")
+    if not findings and not payload.get("text_patches"):
+        raise ValueError("findings or text_patches is required")
 
     file_bytes = base64.b64decode(file_b64)
     if len(file_bytes) > 50 * 1024 * 1024:
         raise ValueError("File exceeds 50MB limit")
 
+    text_patches = payload.get("text_patches") or []
     fixed_bytes, applied_count, skipped_count = apply_fixes_to_pptx(
-        file_bytes, findings
+        file_bytes, findings, text_patches
     )
 
     stem = filename.rsplit(".", 1)[0] if "." in filename else filename

@@ -91,14 +91,20 @@ export function FixPreviewModal({
   const applied = fixResult?.applied ?? [];
   const fixedSlide = fixResult?.slide ?? slide;
   const canDownloadFix =
-    Boolean(uploadFile) && finding.accepted && canAutoFix(finding.rule_id);
+    Boolean(uploadFile) &&
+    finding.accepted &&
+    Boolean(fixResult?.fixable) &&
+    (canAutoFix(finding.rule_id) || needsAiPreview(finding.rule_id) || finding.rule_id.startsWith("AI_"));
 
   async function handleDownloadFix() {
-    if (!uploadFile) return;
+    if (!uploadFile || !fixResult?.fixable) return;
     setDownloading(true);
     setDownloadError(null);
     try {
-      await downloadFixedPptx(uploadFile, [finding]);
+      await downloadFixedPptx(uploadFile, [finding], {
+        originalSlide: slide,
+        fixedSlide: fixResult.slide,
+      });
     } catch (e) {
       setDownloadError(e instanceof Error ? e.message : "Download failed");
     } finally {
@@ -227,8 +233,15 @@ export function FixPreviewModal({
 
             <p className="mt-4 text-[10px] leading-relaxed text-[var(--muted-light)]">
               Preview shows highlighted changes on the slide image. Download
-              applies fixes to the real PPTX with correct fonts and styling.
+              writes preview changes into the real PPTX (AI text rewrites +
+              deterministic styling fixes).
             </p>
+
+            {!canDownloadFix && !loading && fixResult?.fixable && !finding.accepted && (
+              <p className="mt-2 text-[10px] text-[var(--muted)]">
+                Accept this finding to enable download.
+              </p>
+            )}
 
             {canDownloadFix && !loading && (
               <button

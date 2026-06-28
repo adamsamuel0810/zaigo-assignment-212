@@ -112,6 +112,49 @@ def _replace_across_slide(
     return changed
 
 
+def _find_shape_by_id(slide, shape_id: str):
+    try:
+        target = int(shape_id)
+    except (TypeError, ValueError):
+        return None
+    for shape in slide.shapes:
+        if shape.shape_id == target:
+            return shape
+    return None
+
+
+def _set_paragraph_text(paragraph, text: str) -> None:
+    if paragraph.runs:
+        paragraph.runs[0].text = text
+        for run in paragraph.runs[1:]:
+            run.text = ""
+    else:
+        paragraph.text = text
+
+
+def apply_text_patch(slide, patch: dict[str, Any]) -> bool:
+    """Apply AI preview text rewrites to a shape by shape_id."""
+    shape_id = patch.get("shape_id")
+    paragraphs = patch.get("paragraphs") or []
+    if not shape_id or not paragraphs:
+        return False
+    shape = _find_shape_by_id(slide, str(shape_id))
+    if shape is None or not shape.has_text_frame:
+        return False
+
+    text_frame = shape.text_frame
+    for index, text in enumerate(paragraphs):
+        if index < len(text_frame.paragraphs):
+            _set_paragraph_text(text_frame.paragraphs[index], str(text))
+        else:
+            _set_paragraph_text(text_frame.add_paragraph(), str(text))
+
+    for index in range(len(paragraphs), len(text_frame.paragraphs)):
+        _set_paragraph_text(text_frame.paragraphs[index], "")
+
+    return True
+
+
 def _apply_title_font(
     slide,
     *,
@@ -325,11 +368,27 @@ def apply_finding_to_slide(slide, finding: dict[str, Any]) -> bool:
 
 
 def apply_fixes_to_pptx(
-    file_bytes: bytes, findings: list[dict[str, Any]]
+    file_bytes: bytes,
+    findings: list[dict[str, Any]],
+    text_patches: list[dict[str, Any]] | None = None,
 ) -> tuple[bytes, int, int]:
     prs = Presentation(BytesIO(file_bytes))
     applied = 0
     skipped = 0
+
+    for patch in text_patches or []:
+        slide_number = int(patch.get("slide_number", 0))
+        if slide_number < 1 or slide_number > len(prs.slides):
+            skipped += 1
+            continue
+        slide = prs.slides[slide_number - 1]
+        try:
+            if apply_text_patch(slide, patch):
+                applied += 1
+            else:
+                skipped += 1
+        except Exception:
+            skipped += 1
 
     for finding in findings:
         slide_number = int(finding.get("slide_number", 0))
