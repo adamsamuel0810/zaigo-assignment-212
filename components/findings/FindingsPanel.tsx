@@ -19,6 +19,7 @@ interface FindingsPanelProps {
   onReject: (id: string) => void;
   onReset: (id: string) => void;
   onOpenReport: () => void;
+  onPreviewFix?: (finding: Finding) => void;
 }
 
 export function FindingsPanel({
@@ -34,6 +35,7 @@ export function FindingsPanel({
   onReject,
   onReset,
   onOpenReport,
+  onPreviewFix,
 }: FindingsPanelProps) {
   const visible = showLowConfidence
     ? findings
@@ -96,6 +98,7 @@ export function FindingsPanel({
               onAccept={onAccept}
               onReject={onReject}
               onReset={onReset}
+              onPreviewFix={onPreviewFix}
             />
           ))
         )}

@@ -1,5 +1,6 @@
-import OpenAI from "openai";
 import { z } from "zod";
+import { isAiConfigured } from "@/lib/ai/config";
+import { generateStructuredJson } from "@/lib/ai/generate-json";
 import { v4 as uuidv4 } from "uuid";
 import {
   Confidence,
@@ -32,7 +33,67 @@ const AiBatchResponseSchema = z.object({
   findings: z.array(AiFindingSchema),
 });
 
-const BATCH_SIZE = 8;
+const BATCH_SIZE = 3;
+
+const SEMANTIC_REVIEW_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          finding_type: {
+            type: "string",
+            enum: [
+              "NO_FINDING",
+              "HEADLINE_QUALITY",
+              "PARALLEL_GRAMMAR",
+              "TERMINOLOGY",
+              "SLIDE_DENSITY",
+              "SEMANTIC_CONSISTENCY",
+            ],
+          },
+          confidence: {
+            type: "string",
+            enum: ["HIGH", "MEDIUM", "LOW"],
+          },
+          reason: { type: "string" },
+          recommendation: { type: "string" },
+          severity: {
+            type: "string",
+            enum: ["ERROR", "WARNING", "INFO"],
+          },
+          slide_number: { type: "number" },
+        },
+        required: [
+          "finding_type",
+          "confidence",
+          "reason",
+          "recommendation",
+          "severity",
+          "slide_number",
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["findings"],
+  additionalProperties: false,
+} as const;
+
+const SEMANTIC_REVIEW_SYSTEM_PROMPT = `You are an ACME executive compensation presentation reviewer.
+Only flag clear violations of writing style guidelines:
+- Headlines must state takeaways, not just topics
+- Bullet lists must use parallel grammatical structure
+- Terminology must be consistent (e.g. client name, key vs legend)
+- Slides should not be overcrowded
+
+CRITICAL: False positives are worse than missing findings.
+If uncertain, return finding_type NO_FINDING.
+Only return HIGH or MEDIUM confidence when clearly violated.
+Never comment on fonts, colors, or sizes — those are handled separately.
+Return at most one finding per slide in the batch.`;
 
 function slideContext(slide: SlideMetadata): string {
   const bullets = slide.texts.flatMap((t) =>
@@ -92,11 +153,10 @@ function mapAiFinding(
 export async function runAiSemanticChecks(
   deck: PresentationMetadata,
 ): Promise<Finding[]> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!isAiConfigured()) {
     return [];
   }
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const contentSlides = deck.slides.filter(
     (s) => s.slide_type === SlideType.Content && (s.title || s.texts.length > 0),
   );
@@ -108,89 +168,15 @@ export async function runAiSemanticChecks(
     const context = batch.map(slideContext).join("\n\n---\n\n");
 
     try {
-      const response = await client.chat.completions.create({
-        model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-        temperature: 0.1,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "acme_semantic_review",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                findings: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      finding_type: {
-                        type: "string",
-                        enum: [
-                          "NO_FINDING",
-                          "HEADLINE_QUALITY",
-                          "PARALLEL_GRAMMAR",
-                          "TERMINOLOGY",
-                          "SLIDE_DENSITY",
-                          "SEMANTIC_CONSISTENCY",
-                        ],
-                      },
-                      confidence: {
-                        type: "string",
-                        enum: ["HIGH", "MEDIUM", "LOW"],
-                      },
-                      reason: { type: "string" },
-                      recommendation: { type: "string" },
-                      severity: {
-                        type: "string",
-                        enum: ["ERROR", "WARNING", "INFO"],
-                      },
-                      slide_number: { type: "number" },
-                    },
-                    required: [
-                      "finding_type",
-                      "confidence",
-                      "reason",
-                      "recommendation",
-                      "severity",
-                      "slide_number",
-                    ],
-                    additionalProperties: false,
-                  },
-                },
-              },
-              required: ["findings"],
-              additionalProperties: false,
-            },
-          },
-        },
-        messages: [
-          {
-            role: "system",
-            content: `You are an ACME executive compensation presentation reviewer.
-Only flag clear violations of writing style guidelines:
-- Headlines must state takeaways, not just topics
-- Bullet lists must use parallel grammatical structure
-- Terminology must be consistent (e.g. client name, key vs legend)
-- Slides should not be overcrowded
-
-CRITICAL: False positives are worse than missing findings.
-If uncertain, return finding_type NO_FINDING.
-Only return HIGH or MEDIUM confidence when clearly violated.
-Never comment on fonts, colors, or sizes — those are handled separately.
-Return at most one finding per slide in the batch.`,
-          },
-          {
-            role: "user",
-            content: `Review these slides:\n\n${context}`,
-          },
-        ],
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) continue;
-
-      const parsed = AiBatchResponseSchema.parse(JSON.parse(content));
+      const parsed = AiBatchResponseSchema.parse(
+        await generateStructuredJson({
+          system: SEMANTIC_REVIEW_SYSTEM_PROMPT,
+          user: `Review these slides:\n\n${context}`,
+          schema: SEMANTIC_REVIEW_JSON_SCHEMA,
+          schemaName: "acme_semantic_review",
+          temperature: 0.1,
+        }),
+      );
       for (const raw of parsed.findings) {
         const slideNum = raw.slide_number ?? batch[0]?.slide_number ?? 1;
         const finding = mapAiFinding(raw, slideNum);

@@ -5,6 +5,7 @@ import { Finding, SlideMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { resolveFindingHighlights } from "@/lib/utils/finding-highlight";
 import { HtmlSlideFallback } from "@/components/slides/HtmlSlideFallback";
+import { FixOverlayLayer } from "@/components/slides/FixOverlayLayer";
 
 interface SlidePreviewProps {
   slide: SlideMetadata;
@@ -16,6 +17,11 @@ interface SlidePreviewProps {
   /** Either a base64 PNG (local render) or an https URL (ConvertAPI on Vercel). */
   slideImage?: string;
   isRendering?: boolean;
+  /** When set with slideImage, patches only changed regions on top of the PNG. */
+  fixOverlay?: {
+    original: SlideMetadata;
+    fixed: SlideMetadata;
+  };
 }
 
 interface Dimensions {
@@ -103,13 +109,18 @@ export function SlidePreview({
   hoveredFindingId,
   slideImage,
   isRendering,
+  fixOverlay,
 }: SlidePreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [container, setContainer] = useState<Dimensions>({ width: 0, height: 0 });
+  const [container, setContainer] = useState<Dimensions>({
+    width: 0,
+    height: 0,
+  });
 
   const slideAspect = slideHeight / slideWidth;
   const focusedId = hoveredFindingId ?? selectedFindingId;
   const useImagePreview = Boolean(slideImage);
+  const useFixOverlay = Boolean(slideImage && fixOverlay);
   const imageSrc = slideImage
     ? slideImage.startsWith("http")
       ? slideImage
@@ -193,12 +204,6 @@ export function SlidePreview({
     >
       {displayWidth > 0 && displayHeight > 0 && (
         <div className="relative flex flex-col items-center">
-          {!useImagePreview && !isRendering && (
-            <p className="mb-2 text-center text-[10px] text-[var(--muted)]">
-              Approximate preview — charts and complex graphics need ConvertAPI for
-              pixel-accurate slides on Vercel.
-            </p>
-          )}
           {isRendering && (
             <p className="mb-2 text-center text-[10px] text-[var(--accent)]">
               Rendering slide previews…
@@ -213,15 +218,29 @@ export function SlidePreview({
             style={{ width: displayWidth, height: displayHeight }}
           >
             {useImagePreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imageSrc}
-                alt={`Slide ${slide.slide_number}`}
-                className="absolute inset-0 h-full w-full object-fill"
-                draggable={false}
-              />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageSrc}
+                  alt={`Slide ${slide.slide_number}`}
+                  className="absolute inset-0 h-full w-full object-fill"
+                  draggable={false}
+                />
+                {useFixOverlay && fixOverlay && (
+                  <FixOverlayLayer
+                    original={fixOverlay.original}
+                    fixed={fixOverlay.fixed}
+                    scale={scale}
+                    fontScale={fontScale}
+                  />
+                )}
+              </>
             ) : (
-              <HtmlSlideFallback slide={slide} scale={scale} fontScale={fontScale} />
+              <HtmlSlideFallback
+                slide={slide}
+                scale={scale}
+                fontScale={fontScale}
+              />
             )}
 
             {highlights.map((h) => (

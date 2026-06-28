@@ -15,6 +15,14 @@
     "app/api/render-status/route.ts": {
       "maxDuration": 10,
       "memory": 256
+    },
+    "app/api/auto-fix/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/pptx_apply_fixes.py": {
+      "maxDuration": 60,
+      "memory": 1024
     }
   }
 }

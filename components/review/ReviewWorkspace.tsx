@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, LogOut, RefreshCw } from "lucide-react";
+import { Download, FileText, LogOut, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { PresentationAnalysis } from "@/lib/types";
 import { updateFindingStatus } from "@/lib/services/finding-actions";
+import { canAutoFix } from "@/lib/services/auto-fix";
+import { downloadFixedPptx } from "@/lib/utils/apply-fixes-client";
 import { renderSlidesInBrowser } from "@/lib/utils/render-slides-client";
 import { SlideSidebar } from "@/components/slides/SlideSidebar";
 import { SlidePreview } from "@/components/slides/SlidePreview";
 import { FindingsPanel } from "@/components/findings/FindingsPanel";
 import { FinalReportModal } from "@/components/findings/FinalReportModal";
+import { FixPreviewModal } from "@/components/findings/FixPreviewModal";
 import { AppHeader, StatPill } from "@/components/layout/AppHeader";
 
 interface ReviewWorkspaceProps {
@@ -34,8 +37,13 @@ export function ReviewWorkspace({
   const [hoveredFindingId, setHoveredFindingId] = useState<string>();
   const [showLowConfidence, setShowLowConfidence] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [fixPreviewFinding, setFixPreviewFinding] = useState<Finding | null>(
+    null,
+  );
   const [renderingSlides, setRenderingSlides] = useState(false);
   const [renderError, setRenderError] = useState(initialRenderError ?? null);
+  const [downloadingFixed, setDownloadingFixed] = useState(false);
+  const [downloadFixedError, setDownloadFixedError] = useState<string | null>(null);
 
   const hasSlideImages = Boolean(analysis.metadata.slide_images?.length);
 
@@ -108,6 +116,17 @@ export function ReviewWorkspace({
     setAnalysis((prev) => updateFindingStatus(prev, id, "reset"));
   }
 
+  function handlePreviewFix(finding: Finding) {
+    setFixPreviewFinding(finding);
+    setSelectedSlide(finding.slide_number);
+  }
+
+  const fixPreviewSlideMeta = fixPreviewFinding
+    ? analysis.metadata.slides.find(
+        (s) => s.slide_number === fixPreviewFinding.slide_number,
+      )
+    : undefined;
+
   async function handleLogout() {
     await fetch("/api/auth", { method: "DELETE" });
     router.push("/login");
@@ -121,7 +140,27 @@ export function ReviewWorkspace({
     s.findings.some((f) => !f.accepted && !f.rejected),
   ).length;
 
-  const issueCount = slideAnalysis?.findings.filter((f) => !f.rejected).length ?? 0;
+  const issueCount =
+    slideAnalysis?.findings.filter((f) => !f.rejected).length ?? 0;
+
+  const acceptedFixableCount = analysis.findings.filter(
+    (f) => f.accepted && canAutoFix(f.rule_id),
+  ).length;
+
+  async function handleDownloadAllFixes() {
+    if (!uploadFile) return;
+    setDownloadingFixed(true);
+    setDownloadFixedError(null);
+    try {
+      await downloadFixedPptx(uploadFile, analysis.findings);
+    } catch (e) {
+      setDownloadFixedError(
+        e instanceof Error ? e.message : "Download failed",
+      );
+    } finally {
+      setDownloadingFixed(false);
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--background)]">
@@ -139,7 +178,11 @@ export function ReviewWorkspace({
                 value={totalPending}
                 variant={totalPending > 0 ? "warning" : "success"}
               />
-              <StatPill label="Accepted" value={totalAccepted} variant="success" />
+              <StatPill
+                label="Accepted"
+                value={totalAccepted}
+                variant="success"
+              />
             </div>
             <button
               type="button"
@@ -154,6 +197,23 @@ export function ReviewWorkspace({
                 </span>
               )}
             </button>
+            {uploadFile && acceptedFixableCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleDownloadAllFixes()}
+                disabled={downloadingFixed}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--success)] bg-[var(--success-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--success)] transition-colors hover:bg-green-100 disabled:opacity-60"
+                title="Apply accepted auto-fixes and download PPTX"
+              >
+                {downloadingFixed ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Fixed PPTX
+                <span className="tabular-nums">({acceptedFixableCount})</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleLogout}
@@ -165,6 +225,12 @@ export function ReviewWorkspace({
           </>
         }
       />
+
+      {downloadFixedError && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          {downloadFixedError}
+        </div>
+      )}
 
       {/* Sub-header stats on mobile */}
       <div className="flex gap-2 border-b border-[var(--border)] bg-white px-4 py-2 md:hidden">
@@ -209,7 +275,9 @@ export function ReviewWorkspace({
                 ) : renderError?.includes("CONVERTAPI_SECRET") ? (
                   <span>
                     Pixel-accurate previews need{" "}
-                    <code className="rounded bg-amber-100 px-1">CONVERTAPI_SECRET</code>{" "}
+                    <code className="rounded bg-amber-100 px-1">
+                      CONVERTAPI_SECRET
+                    </code>{" "}
                     in Vercel env vars (free at convertapi.com), then redeploy.
                   </span>
                 ) : (
@@ -237,9 +305,7 @@ export function ReviewWorkspace({
                 findings={slideAnalysis?.findings ?? []}
                 selectedFindingId={selectedFindingId}
                 hoveredFindingId={hoveredFindingId}
-                slideImage={
-                  analysis.metadata.slide_images?.[selectedSlide - 1]
-                }
+                slideImage={analysis.metadata.slide_images?.[selectedSlide - 1]}
                 isRendering={renderingSlides && !hasSlideImages}
               />
             )}
@@ -260,6 +326,7 @@ export function ReviewWorkspace({
             onReject={handleReject}
             onReset={handleReset}
             onOpenReport={() => setShowReport(true)}
+            onPreviewFix={handlePreviewFix}
           />
         </div>
       </div>
@@ -269,6 +336,20 @@ export function ReviewWorkspace({
           filename={analysis.filename}
           allFindings={analysis.findings}
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {fixPreviewFinding && fixPreviewSlideMeta && (
+        <FixPreviewModal
+          finding={fixPreviewFinding}
+          slide={fixPreviewSlideMeta}
+          slideWidth={analysis.metadata.slide_width_inches}
+          slideHeight={analysis.metadata.slide_height_inches}
+          slideImage={
+            analysis.metadata.slide_images?.[fixPreviewFinding.slide_number - 1]
+          }
+          uploadFile={uploadFile}
+          onClose={() => setFixPreviewFinding(null)}
         />
       )}
     </div>

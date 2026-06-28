@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, RotateCcw, X } from "lucide-react";
+import { Check, Eye, RotateCcw, X } from "lucide-react";
 import { Finding } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { ConfidenceBadge, SeverityBadge } from "@/components/findings/badges";
+import { canPreviewFix } from "@/lib/services/auto-fix";
 
 interface FindingCardProps {
   finding: Finding;
@@ -15,6 +16,7 @@ interface FindingCardProps {
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
   onReset: (id: string) => void;
+  onPreviewFix?: (finding: Finding) => void;
 }
 
 export function FindingCard({
@@ -27,7 +29,10 @@ export function FindingCard({
   onAccept,
   onReject,
   onReset,
+  onPreviewFix,
 }: FindingCardProps) {
+  const showFixPreview = finding.accepted && canPreviewFix(finding.rule_id);
+
   return (
     <div
       className={cn(
@@ -130,28 +135,44 @@ export function FindingCard({
       )}
 
       {(finding.accepted || finding.rejected) && (
-        <div className="mt-3 flex items-center justify-between gap-2">
-          {finding.accepted ? (
-            <p className="text-xs font-semibold text-[var(--success)]">
-              ✓ Accepted for final report
-            </p>
-          ) : (
-            <p className="text-xs font-medium text-[var(--muted)]">
-              Dismissed as false positive
-            </p>
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            {finding.accepted ? (
+              <p className="text-xs font-semibold text-[var(--success)]">
+                ✓ Accepted for final report
+              </p>
+            ) : (
+              <p className="text-xs font-medium text-[var(--muted)]">
+                Dismissed as false positive
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReset(finding.id);
+              }}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border-strong)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              title="Undo and review again"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Undo
+            </button>
+          </div>
+
+          {showFixPreview && onPreviewFix && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreviewFix(finding);
+              }}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-3 py-2 text-xs font-semibold text-[var(--accent-dark)] transition-colors hover:bg-[var(--accent)]/10"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Preview auto-fix
+            </button>
           )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReset(finding.id);
-            }}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border-strong)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-            title="Undo and review again"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Undo
-          </button>
         </div>
       )}
     </div>

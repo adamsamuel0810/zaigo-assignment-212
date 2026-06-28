@@ -57,7 +57,10 @@ Visit `http://localhost:3000` and sign in with the password from `.env.local` (d
 | Variable | Description |
 |----------|-------------|
 | `APP_PASSWORD` | Login password for the app |
-| `OPENAI_API_KEY` | Optional — enables AI semantic checks |
+| `GEMINI_API_KEY` | Optional — free AI key from [Google AI Studio](https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | Gemini model (default: `gemini-2.5-flash-lite`; avoid `gemini-2.0-flash` — often zero free quota) |
+| `AI_PROVIDER` | `gemini` or `openai` when both keys are set (default: Gemini if key present) |
+| `OPENAI_API_KEY` | Optional — OpenAI instead of Gemini |
 | `OPENAI_MODEL` | OpenAI model (default: `gpt-4o-mini`) |
 
 ### Testing
@@ -69,7 +72,7 @@ npm test
 ### Deploy to Vercel
 
 1. Push to GitHub and import to Vercel
-2. Set `APP_PASSWORD` and `OPENAI_API_KEY` in Vercel environment variables
+2. Set `APP_PASSWORD` and `GEMINI_API_KEY` (or `OPENAI_API_KEY`) in Vercel environment variables
 3. Python dependencies are installed from `requirements.txt` automatically
 
 ## Credentials (for reviewers)
