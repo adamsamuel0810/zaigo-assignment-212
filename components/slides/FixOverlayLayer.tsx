@@ -2,13 +2,13 @@
 
 import { useMemo } from "react";
 import { SlideMetadata } from "@/lib/types";
-import { getFixOverlayPatches } from "@/lib/utils/fix-overlay";
+import { getFixOverlayPatches, expandMaskPosition } from "@/lib/utils/fix-overlay";
 import {
   TextBoxLayer,
   posStyle,
+  runFontSizePx,
   toCssColor,
 } from "@/components/slides/slide-render-utils";
-import { tableCellFontSizePx } from "@/lib/utils/slide-geometry";
 import type { CSSProperties } from "react";
 
 interface FixOverlayLayerProps {
@@ -35,6 +35,7 @@ export function FixOverlayLayer({
     <>
       {patches.map((patch) => {
         if (patch.type === "text") {
+          const maskPos = expandMaskPosition(patch.text.position, scale);
           return (
             <div
               key={patch.id}
@@ -43,7 +44,7 @@ export function FixOverlayLayer({
               <div
                 className="absolute"
                 style={{
-                  ...posStyle(patch.text.position, scale),
+                  ...posStyle(maskPos, scale),
                   backgroundColor: patch.maskColor,
                 }}
               />
@@ -51,6 +52,7 @@ export function FixOverlayLayer({
                 text={patch.text}
                 scale={scale}
                 fontScale={fontScale * patch.fontScaleMultiplier}
+                overlay
               />
             </div>
           );
@@ -77,7 +79,7 @@ export function FixOverlayLayer({
                   color: toCssColor(patch.fontColorHex),
                   fontFamily: "Calibri, Arial, sans-serif",
                   fontWeight: patch.bold ? "bold" : "normal",
-                  fontSize: tableCellFontSizePx(patch.fontSizePt, scale),
+                  fontSize: runFontSizePx(patch.fontSizePt, scale, 10),
                   textAlign:
                     (patch.alignment as CSSProperties["textAlign"]) ?? "left",
                   padding: "1px 2px",

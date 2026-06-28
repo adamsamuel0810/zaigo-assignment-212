@@ -4,6 +4,7 @@ import {
   SlideMetadata,
   TableMetadata,
   TextMetadata,
+  TextRunMetadata,
 } from "@/lib/types";
 import { dominantRunStyle } from "@/components/slides/slide-render-utils";
 import {
@@ -53,6 +54,55 @@ function collectTextShapes(slide: SlideMetadata): TextMetadata[] {
   return shapes;
 }
 
+function paragraphHasContent(p: ParagraphMetadata): boolean {
+  return Boolean(p.text.trim() || p.runs.some((r) => r.text.trim()));
+}
+
+function nonEmptyParagraphs(text: TextMetadata): ParagraphMetadata[] {
+  return text.paragraphs.filter(paragraphHasContent);
+}
+
+function defaultFontSizePt(text: TextMetadata): number {
+  if (text.is_title) return 24;
+  return 16;
+}
+
+function styleRunFromParagraph(p: ParagraphMetadata): Partial<TextRunMetadata> {
+  const run = p.runs.find((r) => r.text.trim()) ?? p.runs[0];
+  if (!run) return {};
+  const { text: _text, ...style } = run;
+  return style;
+}
+
+/** Apply new text while keeping paragraph layout + run styling from the template. */
+export function applyTextToParagraphTemplate(
+  template: ParagraphMetadata,
+  newText: string,
+  fallbackStyle: Partial<TextRunMetadata> = {},
+): ParagraphMetadata {
+  const style = {
+    ...fallbackStyle,
+    ...styleRunFromParagraph(template),
+    font_size_pt:
+      styleRunFromParagraph(template).font_size_pt ??
+      fallbackStyle.font_size_pt,
+    font_family:
+      styleRunFromParagraph(template).font_family ??
+      fallbackStyle.font_family ??
+      "Calibri",
+    bold:
+      styleRunFromParagraph(template).bold ?? fallbackStyle.bold ?? false,
+  };
+
+  return {
+    ...template,
+    text: newText,
+    runs: newText.trim()
+      ? [{ ...style, text: newText }]
+      : [{ ...style, text: "" }],
+  };
+}
+
 function mergeFixedTextWithOriginalStyle(
   original: TextMetadata,
   fixed: TextMetadata,
@@ -69,35 +119,67 @@ function mergeParagraphs(
   originalText: TextMetadata,
   fixed: TextMetadata,
 ): ParagraphMetadata[] {
-  const original = originalText.paragraphs;
-  const fixedParagraphs = fixed.paragraphs;
-  const fixedFullText = fixed.full_text;
+  const slots = originalText.paragraphs;
+  const origContent = nonEmptyParagraphs(originalText);
+  const fixedContent = nonEmptyParagraphs(fixed);
+  const shapeStyle = dominantRunStyle(originalText);
+  const fallbackStyle: Partial<TextRunMetadata> = {
+    ...shapeStyle,
+    font_size_pt: shapeStyle.font_size_pt ?? defaultFontSizePt(originalText),
+    font_family: shapeStyle.font_family ?? "Calibri",
+    bold: shapeStyle.bold ?? originalText.is_title,
+  };
 
-  if (
-    original.length > 0 &&
-    original.length === fixedParagraphs.length &&
-    original.every((p, i) => p.runs.length === fixedParagraphs[i].runs.length)
-  ) {
-    return original.map((origPara, i) => ({
-      ...origPara,
-      text: fixedParagraphs[i].text,
-      bullet_char: fixedParagraphs[i].bullet_char ?? origPara.bullet_char,
-      runs: origPara.runs
-        .map((origRun, j) => ({
-          ...origRun,
-          text: fixedParagraphs[i].runs[j]?.text ?? "",
-        }))
-        .filter((run) => run.text.length > 0),
-    }));
+  if (origContent.length === 0) {
+    const text = fixed.full_text.trim();
+    return [
+      {
+        level: 0,
+        text,
+        runs: [{ text, ...fallbackStyle }],
+      },
+    ];
   }
 
-  const style = dominantRunStyle(originalText);
+  // Same number of content paragraphs — preserve each original paragraph's style.
+  if (
+    origContent.length === fixedContent.length &&
+    origContent.length > 0
+  ) {
+    let fixedIndex = 0;
+    return slots.map((slot) => {
+      if (!paragraphHasContent(slot)) return slot;
+      const merged = applyTextToParagraphTemplate(
+        slot,
+        fixedContent[fixedIndex]?.text ?? "",
+        fallbackStyle,
+      );
+      fixedIndex += 1;
+      return merged;
+    });
+  }
+
+  // Title / block rewrite collapsed to one paragraph — use first original slot styling.
+  if (fixedContent.length === 1) {
+    const newText = fixedContent[0].text || fixed.full_text.trim();
+    const template = origContent[0];
+    return [applyTextToParagraphTemplate(template, newText, fallbackStyle)];
+  }
+
+  // More fixed lines than original content slots — map by index with first slot style.
+  if (fixedContent.length > 0 && origContent.length > 0) {
+    return fixedContent.map((fixedPara, index) =>
+      applyTextToParagraphTemplate(
+        origContent[Math.min(index, origContent.length - 1)],
+        fixedPara.text,
+        fallbackStyle,
+      ),
+    );
+  }
+
+  const combined = fixed.full_text.trim();
   return [
-    {
-      level: 0,
-      text: fixedFullText,
-      runs: [{ text: fixedFullText, ...style }],
-    },
+    applyTextToParagraphTemplate(origContent[0], combined, fallbackStyle),
   ];
 }
 
@@ -112,6 +194,20 @@ function fontScaleMultiplierFor(
 
 function maskColorFor(text: TextMetadata): string {
   return toCssColor(text.fill_hex) ?? "#FFFFFF";
+}
+
+function expandMaskPosition(
+  position: PositionMetadata,
+  scale: number,
+  padPx = 2,
+): PositionMetadata {
+  const padIn = padPx / Math.max(scale, 1);
+  return {
+    left_inches: Math.max(0, position.left_inches - padIn),
+    top_inches: Math.max(0, position.top_inches - padIn),
+    width_inches: position.width_inches + padIn * 2,
+    height_inches: position.height_inches + padIn * 2,
+  };
 }
 
 function toCssColor(hex?: string | null): string | undefined {
@@ -229,3 +325,5 @@ export function getFixOverlayPatches(
 
   return patches;
 }
+
+export { expandMaskPosition };

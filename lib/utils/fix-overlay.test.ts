@@ -80,6 +80,132 @@ describe("getFixOverlayPatches", () => {
     }
   });
 
+  it("preserves title font styling when AI collapses multi-line title", () => {
+    const original = {
+      slide_number: 3,
+      slide_type: SlideType.Content,
+      notes: "",
+      title: {
+        shape_id: "title",
+        shape_name: "Title",
+        is_title: true,
+        position: {
+          left_inches: 0.5,
+          top_inches: 0.3,
+          width_inches: 9,
+          height_inches: 1.2,
+        },
+        paragraphs: [
+          {
+            level: 0,
+            text: "Line one of a long title",
+            runs: [{ text: "Line one of a long title", font_size_pt: 24, bold: true }],
+          },
+          {
+            level: 0,
+            text: "Line two continues here",
+            runs: [{ text: "Line two continues here", font_size_pt: 24, bold: true }],
+          },
+          {
+            level: 0,
+            text: "Line three more text",
+            runs: [{ text: "Line three more text", font_size_pt: 24, bold: true }],
+          },
+          {
+            level: 0,
+            text: "Line four ends title",
+            runs: [{ text: "Line four ends title", font_size_pt: 24, bold: true }],
+          },
+        ],
+        full_text: "Line one\nLine two\nLine three\nLine four",
+      },
+      texts: [],
+      tables: [],
+      charts: [],
+      shapes: [],
+      has_confidentiality: false,
+      authors: [],
+      contains_draft: false,
+    };
+
+    const fixed = structuredClone(original);
+    fixed.title!.paragraphs = [
+      {
+        level: 0,
+        text: "Shortened title text",
+        runs: [{ text: "Shortened title text" }],
+      },
+    ];
+    fixed.title!.full_text = "Shortened title text";
+
+    const patches = getFixOverlayPatches(original, fixed);
+    expect(patches).toHaveLength(1);
+    if (patches[0].type === "text") {
+      expect(patches[0].text.paragraphs[0].runs[0].font_size_pt).toBe(24);
+      expect(patches[0].text.paragraphs[0].runs[0].bold).toBe(true);
+    }
+  });
+
+  it("preserves per-bullet styling when rewriting parallel bullets", () => {
+    const original = {
+      slide_number: 2,
+      slide_type: SlideType.Content,
+      notes: "",
+      title: null,
+      texts: [
+        {
+          shape_id: "body",
+          shape_name: "Body",
+          is_title: false,
+          position: {
+            left_inches: 0.5,
+            top_inches: 1.5,
+            width_inches: 9,
+            height_inches: 4,
+          },
+          paragraphs: [
+            {
+              level: 0,
+              text: "ACME conducted review",
+              bullet_char: "▪",
+              runs: [{ text: "ACME conducted review", font_size_pt: 16 }],
+            },
+            {
+              level: 0,
+              text: "We updated screening",
+              bullet_char: "▪",
+              runs: [{ text: "We updated screening", font_size_pt: 16 }],
+            },
+          ],
+          full_text: "ACME conducted review\nWe updated screening",
+        },
+      ],
+      tables: [],
+      charts: [],
+      shapes: [],
+      has_confidentiality: false,
+      authors: [],
+      contains_draft: false,
+    };
+
+    const fixed = structuredClone(original);
+    fixed.texts[0].paragraphs[0].text = "Conduct annual review";
+    fixed.texts[0].paragraphs[0].runs[0].text = "Conduct annual review";
+    fixed.texts[0].paragraphs[1].text = "Update peer screening";
+    fixed.texts[0].paragraphs[1].runs[0].text = "Update peer screening";
+    fixed.texts[0].full_text = "Conduct annual review\nUpdate peer screening";
+
+    const patches = getFixOverlayPatches(original, fixed);
+    expect(patches).toHaveLength(1);
+    if (patches[0].type === "text") {
+      expect(patches[0].text.paragraphs[0].bullet_char).toBe("▪");
+      expect(patches[0].text.paragraphs[0].runs[0].font_size_pt).toBe(16);
+      expect(patches[0].text.paragraphs[1].runs[0].text).toBe(
+        "Update peer screening",
+      );
+    }
+  });
+
   it("creates a cell patch with a wider mask than the equal-share cell box", () => {
     const table = {
       shape_id: "t1",
