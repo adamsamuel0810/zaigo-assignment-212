@@ -1,13 +1,18 @@
 import { z } from "zod";
 import { generateStructuredJson } from "@/lib/ai/generate-json";
+import { estimateTitleLines, isBodyContentText } from "@/lib/rules/helpers";
 import {
   Finding,
   SlideMetadata,
   TextMetadata,
 } from "@/lib/types";
-import { isBodyContentText } from "@/lib/rules/helpers";
 import type { AutoFixResult } from "@/lib/services/auto-fix";
 import { applyAutoFix, canAutoFix, needsAiPreview } from "@/lib/services/auto-fix";
+import {
+  rewriteTitleText,
+  shortenTitleToLineLimit,
+  slideTextChanged,
+} from "@/lib/utils/title-fix";
 
 const AiFixResponseSchema = z.object({
   bullet_rewrites: z
@@ -75,6 +80,12 @@ const AI_FIX_JSON_SCHEMA = {
 const AI_FIX_SYSTEM_PROMPT = `You fix ACME executive compensation slide copy. Preserve facts, numbers, and client names.
 Only change text needed to resolve the issue. Do not invent data.
 
+For TITLE_004 (title exceeds three lines):
+- MUST return title_text with a shorter rewrite of the title
+- Keep the same meaning; remove filler and tighten phrasing
+- Target at most 3 lines when displayed at 24pt in the title box
+- Do NOT repeat the issue description in applied_summary
+
 For parallel bullet structure (BULLET_005 / PARALLEL_GRAMMAR):
 - Rewrite bullets so openings share the same grammatical pattern
 - Prefer consistent verb-led imperatives OR consistent "We" subject
@@ -84,7 +95,7 @@ For headline issues: rewrite the title as a clear takeaway, max 3 lines worth of
 
 For terminology: apply consistent ACME terms (%ile not Percentile, Target not TGT).
 
-Return bullet_rewrites with shape_id matching the input. Include 1-3 applied_summary strings.`;
+Return bullet_rewrites with shape_id matching the input. Include 1-3 applied_summary strings describing what changed (not the rule name).`;
 
 function cloneSlide(slide: SlideMetadata): SlideMetadata {
   return structuredClone(slide);
@@ -147,6 +158,12 @@ function buildSlideFixContext(finding: Finding, slide: SlideMetadata): string {
   if (finding.rule_id.includes("HEADLINE") || finding.rule_id === "TITLE_004") {
     lines.push("");
     lines.push(`Current title text: ${slide.title?.full_text ?? ""}`);
+    if (finding.rule_id === "TITLE_004") {
+      lines.push(`Title line count: ${finding.actual_value}`);
+      lines.push(
+        "Rewrite title_text so the title fits within 3 lines. Return title_text in your JSON response.",
+      );
+    }
   }
 
   return lines.join("\n");
@@ -172,13 +189,18 @@ export async function generateAiFix(
 export function applyAiFixResponse(
   slide: SlideMetadata,
   ai: AiFixResponse,
+  finding?: Finding,
 ): AutoFixResult {
   const fixed = cloneSlide(slide);
-  const applied = [...ai.applied_summary];
+  const applied = ai.applied_summary.filter(
+    (summary) =>
+      !summary.startsWith("TITLE_004:") &&
+      !summary.startsWith("BULLET_005:") &&
+      summary.trim().length > 0,
+  );
 
   if (ai.title_text?.trim() && fixed.title) {
-    setParagraphText(fixed.title.paragraphs, 0, ai.title_text.trim());
-    syncShapeFullText(fixed.title);
+    rewriteTitleText(fixed.title, ai.title_text.trim());
     if (!applied.length) applied.push("Rewrote slide title");
   }
 
@@ -189,6 +211,9 @@ export function applyAiFixResponse(
     if (!shape) continue;
     setParagraphText(shape.paragraphs, 0, rewrite.new_text);
     syncShapeFullText(shape);
+    if (!applied.some((s) => s.toLowerCase().includes("text"))) {
+      applied.push("Rewrote slide text");
+    }
   }
 
   for (const rewrite of ai.bullet_rewrites ?? []) {
@@ -209,10 +234,34 @@ export function applyAiFixResponse(
     }
   }
 
+  const changed = slideTextChanged(slide, fixed);
+  const titleOk =
+    finding?.rule_id !== "TITLE_004" || estimateTitleLines(fixed) <= 3;
+
   return {
     slide: fixed,
-    fixable: applied.length > 0,
-    applied,
+    fixable: changed && titleOk && applied.length > 0,
+    applied: changed && titleOk ? applied : [],
+  };
+}
+
+function applyTitle004Fallback(
+  slide: SlideMetadata,
+): AutoFixResult | null {
+  const shortened = shortenTitleToLineLimit(slide, 3);
+  if (!shortened || !slide.title) return null;
+
+  const fixed = cloneSlide(slide);
+  rewriteTitleText(fixed.title!, shortened);
+
+  if (!slideTextChanged(slide, fixed) || estimateTitleLines(fixed) > 3) {
+    return null;
+  }
+
+  return {
+    slide: fixed,
+    fixable: true,
+    applied: ["Shortened title to fit within three lines"],
   };
 }
 
@@ -230,11 +279,33 @@ export async function resolveAutoFixPreview(
     return { ...deterministic, source: "deterministic" };
   }
 
-  const ai = await generateAiFix(finding, slide);
-  const aiResult = applyAiFixResponse(
-    deterministic.fixable ? deterministic.slide : slide,
-    ai,
-  );
+  let aiResult: AutoFixResult;
+  try {
+    const ai = await generateAiFix(finding, slide);
+    aiResult = applyAiFixResponse(
+      deterministic.fixable ? deterministic.slide : slide,
+      ai,
+      finding,
+    );
+  } catch (error) {
+    if (finding.rule_id === "TITLE_004") {
+      const fallback = applyTitle004Fallback(slide);
+      if (fallback?.fixable) {
+        return { ...fallback, source: "ai" };
+      }
+    }
+    throw error;
+  }
+
+  if (
+    finding.rule_id === "TITLE_004" &&
+    (!aiResult.fixable || estimateTitleLines(aiResult.slide) > 3)
+  ) {
+    const fallback = applyTitle004Fallback(slide);
+    if (fallback?.fixable) {
+      return { ...fallback, source: aiResult.fixable ? "hybrid" : "ai" };
+    }
+  }
 
   if (!aiResult.fixable && deterministic.fixable) {
     return { ...deterministic, source: "deterministic" };

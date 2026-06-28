@@ -49,7 +49,7 @@ export async function downloadFixedPptx(
     } catch {
       if (text.includes("<!DOCTYPE") || text.includes("<html")) {
         detail =
-          "Apply-fixes API not found. Restart the dev server after pulling latest changes.";
+          "Apply-fixes API returned HTML. On Vercel, set VERCEL_AUTOMATION_BYPASS_SECRET and redeploy.";
       }
     }
     throw new Error(detail || `Apply fixes failed (${res.status})`);

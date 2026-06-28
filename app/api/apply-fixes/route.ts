@@ -54,9 +54,11 @@ async function applyFixesViaVercelPython(
   payload: ApplyFixesPayload,
   request: Request,
 ): Promise<Record<string, unknown>> {
-  const base = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.APPLY_FIXES_API_URL;
+  const base =
+    process.env.APPLY_FIXES_API_URL ??
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : null);
 
   if (!base) {
     throw new Error("Apply-fixes Python endpoint is not configured.");
@@ -86,6 +88,11 @@ async function applyFixesViaVercelPython(
   try {
     data = JSON.parse(text) as Record<string, unknown>;
   } catch {
+    if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+      throw new Error(
+        "Apply-fixes Python endpoint returned HTML instead of JSON. On Vercel, set VERCEL_AUTOMATION_BYPASS_SECRET (Project Settings → Deployment Protection → Protection Bypass for Automation) and redeploy.",
+      );
+    }
     throw new Error(
       `Apply fixes failed (${res.status}): ${text.slice(0, 200) || res.statusText}`,
     );

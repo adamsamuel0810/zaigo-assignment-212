@@ -16,6 +16,9 @@ export function isGeminiQuotaError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
     lower.includes("429") ||
+    lower.includes("503") ||
+    lower.includes("service unavailable") ||
+    lower.includes("high demand") ||
     lower.includes("quota") ||
     lower.includes("rate limit") ||
     lower.includes("too many requests") ||
