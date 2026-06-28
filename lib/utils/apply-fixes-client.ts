@@ -118,7 +118,8 @@ export async function downloadFixedPptx(
   URL.revokeObjectURL(url);
 
   return {
-    applied_count: data.applied_count ?? deterministic.length + mergedPatches.length,
+    applied_count:
+      data.applied_count ?? deterministic.length + mergedPatches.length,
     skipped_count: data.skipped_count ?? 0,
   };
 }

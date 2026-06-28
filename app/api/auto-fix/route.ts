@@ -4,7 +4,7 @@ import { Finding, SlideMetadata } from "@/lib/types";
 import { canPreviewFix } from "@/lib/services/auto-fix";
 import { resolveAutoFixPreview } from "@/lib/openai/auto-fix";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 export async function POST(request: Request) {
   try {
@@ -51,11 +51,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Auto-fix failed",
-      },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : "Auto-fix failed";
+    const status =
+      message.includes("too long") || message.includes("timed out") ? 504 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

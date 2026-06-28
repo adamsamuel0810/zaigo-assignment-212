@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { generateStructuredJson } from "@/lib/ai/generate-json";
 import { estimateTitleLines, isBodyContentText } from "@/lib/rules/helpers";
-import {
-  Finding,
-  SlideMetadata,
-  TextMetadata,
-} from "@/lib/types";
+import { Finding, SlideMetadata, TextMetadata } from "@/lib/types";
 import type { AutoFixResult } from "@/lib/services/auto-fix";
-import { applyAutoFix, canAutoFix, needsAiPreview } from "@/lib/services/auto-fix";
+import {
+  applyAutoFix,
+  canAutoFix,
+  needsAiPreview,
+} from "@/lib/services/auto-fix";
 import {
   rewriteTitleText,
   shortenTitleToLineLimit,
@@ -181,6 +181,9 @@ export async function generateAiFix(
     schema: AI_FIX_JSON_SCHEMA,
     schemaName: "acme_auto_fix",
     temperature: 0.2,
+    timeoutMs: 150_000,
+    maxRetries: 1,
+    singleModel: true,
   });
 
   return AiFixResponseSchema.parse(raw);
@@ -245,9 +248,7 @@ export function applyAiFixResponse(
   };
 }
 
-function applyTitle004Fallback(
-  slide: SlideMetadata,
-): AutoFixResult | null {
+function applyTitle004Fallback(slide: SlideMetadata): AutoFixResult | null {
   const shortened = shortenTitleToLineLimit(slide, 3);
   if (!shortened || !slide.title) return null;
 
