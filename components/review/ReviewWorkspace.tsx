@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Download, FileText, LogOut, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { PresentationAnalysis } from "@/lib/types";
+import { Finding, PresentationAnalysis } from "@/lib/types";
 import { updateFindingStatus } from "@/lib/services/finding-actions";
 import { canAutoFix } from "@/lib/services/auto-fix";
 import { downloadFixedPptx } from "@/lib/utils/apply-fixes-client";

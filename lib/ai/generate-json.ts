@@ -68,7 +68,7 @@ async function generateWithGeminiModel(
     generationConfig: {
       temperature: options.temperature ?? 0.2,
       responseMimeType: "application/json",
-      responseSchema: geminiSchema as Schema,
+      responseSchema: geminiSchema as unknown as Schema,
     },
   });
 
