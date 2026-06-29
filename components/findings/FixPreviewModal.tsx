@@ -27,6 +27,7 @@ interface FixPreviewModalProps {
   slideImage?: string;
   uploadFile?: File | null;
   isSaved?: boolean;
+  savedFix?: SavedAiFix | null;
   savedFixCount?: number;
   onSaveFix: (saved: SavedAiFix) => void;
   onDownloadAllFixes: () => Promise<void>;
@@ -41,6 +42,7 @@ export function FixPreviewModal({
   slideImage,
   uploadFile,
   isSaved = false,
+  savedFix = null,
   savedFixCount = 0,
   onSaveFix,
   onDownloadAllFixes,
@@ -60,6 +62,18 @@ export function FixPreviewModal({
     let cancelled = false;
 
     async function load() {
+      if (savedFix?.findingId === finding.id) {
+        setFixResult({
+          slide: savedFix.fixedSlide,
+          fixable: true,
+          applied: savedFix.applied,
+        });
+        setFixSource("ai");
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
@@ -100,7 +114,7 @@ export function FixPreviewModal({
     return () => {
       cancelled = true;
     };
-  }, [finding, slide]);
+  }, [finding.id, finding.rule_id, slide.slide_number, savedFix]);
 
   useEffect(() => {
     setJustSaved(false);
@@ -129,10 +143,7 @@ export function FixPreviewModal({
     return humanizeError(downloadError, "download");
   }, [downloadError]);
   const showSaveButton =
-    Boolean(fixResult?.fixable) &&
-    finding.accepted &&
-    isAiFix &&
-    !loading;
+    Boolean(fixResult?.fixable) && finding.accepted && isAiFix && !loading;
 
   const canDownloadFix =
     Boolean(uploadFile) &&
@@ -149,7 +160,7 @@ export function FixPreviewModal({
       slideNumber: finding.slide_number,
       ruleId: finding.rule_id,
       title: finding.title,
-      originalSlide: slide,
+      originalSlide: savedFix?.originalSlide ?? slide,
       fixedSlide: fixResult.slide,
       applied: fixResult.applied,
       savedAt: Date.now(),
@@ -236,133 +247,150 @@ export function FixPreviewModal({
         <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(280px,320px)_1fr]">
           <aside className="flex max-h-[36vh] min-h-0 flex-col overflow-hidden border-b border-[var(--border)] lg:max-h-none lg:border-b-0 lg:border-r">
             <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-5">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <SeverityBadge severity={finding.severity} />
-              <span className="font-mono text-[10px] text-[var(--muted-light)]">
-                {finding.rule_id}
-              </span>
-            </div>
-
-            <h3 className="text-sm font-semibold leading-snug text-[var(--foreground)]">
-              {finding.title}
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-              {finding.description}
-            </p>
-
-            <div className="mt-4 space-y-2 rounded-lg bg-[var(--surface)] p-3 text-xs">
-              <div className="grid grid-cols-[72px_1fr] gap-1.5">
-                <span className="font-medium text-[var(--muted)]">
-                  Expected
-                </span>
-                <span className="text-[var(--foreground)]">
-                  {finding.expected_value}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <SeverityBadge severity={finding.severity} />
+                <span className="font-mono text-[10px] text-[var(--muted-light)]">
+                  {finding.rule_id}
                 </span>
               </div>
-              <div className="grid grid-cols-[72px_1fr] gap-1.5">
-                <span className="font-medium text-[var(--muted)]">Actual</span>
-                <span className="font-medium text-[var(--error)]">
-                  {finding.actual_value}
-                </span>
-              </div>
-            </div>
 
-            {finding.recommendation && (
-              <p className="mt-3 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-xs leading-relaxed text-[var(--foreground)]">
-                <span className="font-semibold text-[var(--success)]">
-                  Fix:{" "}
-                </span>
-                {finding.recommendation}
+              <h3 className="text-sm font-semibold leading-snug text-[var(--foreground)]">
+                {finding.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                {finding.description}
               </p>
-            )}
 
-            {loading && (
-              <div className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-xs text-[var(--muted)]">
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--accent)]" />
-                {needsAiPreview(finding.rule_id)
-                  ? "Generating AI fix preview…"
-                  : "Applying fix…"}
+              <div className="mt-4 space-y-2 rounded-lg bg-[var(--surface)] p-3 text-xs">
+                <div className="grid grid-cols-[72px_1fr] gap-1.5">
+                  <span className="font-medium text-[var(--muted)]">
+                    Expected
+                  </span>
+                  <span className="text-[var(--foreground)]">
+                    {finding.expected_value}
+                  </span>
+                </div>
+                <div className="grid grid-cols-[72px_1fr] gap-1.5">
+                  <span className="font-medium text-[var(--muted)]">
+                    Actual
+                  </span>
+                  <span className="font-medium text-[var(--error)]">
+                    {finding.actual_value}
+                  </span>
+                </div>
               </div>
-            )}
 
-            {!loading && applied.length > 0 && (
-              <div className="mt-4 rounded-lg border border-green-200 bg-[var(--success-bg)] px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--success)]">
-                  Applied in preview
+              {finding.recommendation && (
+                <p className="mt-3 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-xs leading-relaxed text-[var(--foreground)]">
+                  <span className="font-semibold text-[var(--success)]">
+                    Fix:{" "}
+                  </span>
+                  {finding.recommendation}
                 </p>
-                <ul className="mt-1.5 space-y-1 text-xs text-[var(--foreground)]">
-                  {applied.map((change) => (
-                    <li key={change}>• {change}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              )}
 
-            {!loading && !error && applied.length === 0 && (
-              <StatusAlert variant="info" title="No automated preview" className="mt-4">
-                We could not generate a preview for this finding. Apply the
-                recommendation manually in PowerPoint.
-              </StatusAlert>
-            )}
+              {loading && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-xs text-[var(--muted)]">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--accent)]" />
+                  {needsAiPreview(finding.rule_id)
+                    ? "Generating AI fix preview…"
+                    : "Applying fix…"}
+                </div>
+              )}
+
+              {!loading && applied.length > 0 && (
+                <div className="mt-4 rounded-lg border border-green-200 bg-[var(--success-bg)] px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--success)]">
+                    Applied in preview
+                  </p>
+                  <ul className="mt-1.5 space-y-1 text-xs text-[var(--foreground)]">
+                    {applied.map((change) => (
+                      <li key={change}>• {change}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {!loading && !error && applied.length === 0 && (
+                <StatusAlert
+                  variant="info"
+                  title="No automated preview"
+                  className="mt-4"
+                >
+                  We could not generate a preview for this finding. Apply the
+                  recommendation manually in PowerPoint.
+                </StatusAlert>
+              )}
             </div>
 
             <div className="shrink-0 space-y-3 border-t border-[var(--border)] bg-[var(--surface)] p-4 lg:p-5">
-            <p className="text-[11px] leading-relaxed text-[var(--muted-light)]">
-              Save each AI fix before switching slides. Download applies all
-              saved AI fixes plus accepted deterministic fixes to the PPTX.
-            </p>
-
-            {!canDownloadFix && !loading && fixResult?.fixable && !finding.accepted && (
-              <p className="text-[11px] text-[var(--muted)]">
-                Accept this finding to enable save.
+              <p className="text-[11px] leading-relaxed text-[var(--muted-light)]">
+                Save each AI fix before switching slides. Download applies all
+                saved AI fixes plus accepted deterministic fixes to the PPTX.
               </p>
-            )}
 
-            {showSaveButton && (
-              <button
-                type="button"
-                onClick={handleSaveFix}
-                className={`mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
-                  isSaved || justSaved
-                    ? "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                    : "border border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100"
-                }`}
-              >
-                <Save className="h-4 w-4" />
-                {isSaved || justSaved ? "Saved for download" : "Save fix"}
-              </button>
-            )}
-
-            {showSaveButton && !isSaved && !justSaved && (
-              <p className="text-[11px] text-[var(--muted)]">
-                Save this fix, then fix other slides. Download once at the end.
-              </p>
-            )}
-
-            {canDownloadFix && !loading && (
-              <button
-                type="button"
-                onClick={() => void handleDownloadFix()}
-                disabled={downloading}
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--success)] px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-green-800 disabled:opacity-60"
-              >
-                {downloading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
+              {!canDownloadFix &&
+                !loading &&
+                fixResult?.fixable &&
+                !finding.accepted && (
+                  <p className="text-[11px] text-[var(--muted)]">
+                    Accept this finding to enable save.
+                  </p>
                 )}
-                Download fixed PPTX
-                {savedFixCount > 0 && (
-                  <span className="tabular-nums">({savedFixCount} saved)</span>
-                )}
-              </button>
-            )}
 
-            {isAiFix && !loading && fixResult?.fixable && savedFixCount === 0 && !isSaved && !justSaved && (
-              <p className="text-[11px] text-[var(--warning)]">
-                Save at least one AI fix before downloading.
-              </p>
-            )}
+              {showSaveButton && (
+                <button
+                  type="button"
+                  onClick={handleSaveFix}
+                  className={`mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                    isSaved || justSaved
+                      ? "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                      : "border border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100"
+                  }`}
+                >
+                  <Save className="h-4 w-4" />
+                  {isSaved || justSaved ? "Saved for download" : "Save fix"}
+                </button>
+              )}
+
+              {showSaveButton && !isSaved && !justSaved && (
+                <p className="text-[11px] text-[var(--muted)]">
+                  Save this fix, then fix other slides. Download once at the
+                  end.
+                </p>
+              )}
+
+              {canDownloadFix && !loading && (
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadFix()}
+                  disabled={downloading}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--success)] px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-green-800 disabled:opacity-60"
+                >
+                  {downloading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Download fixed PPTX
+                  {savedFixCount > 0 && (
+                    <span className="tabular-nums">
+                      ({savedFixCount} saved)
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {isAiFix &&
+                !loading &&
+                fixResult?.fixable &&
+                savedFixCount === 0 &&
+                !isSaved &&
+                !justSaved && (
+                  <p className="text-[11px] text-[var(--warning)]">
+                    Save at least one AI fix before downloading.
+                  </p>
+                )}
             </div>
           </aside>
 

@@ -32,6 +32,23 @@ export function rewriteTitleText(title: TextMetadata, newText: string): void {
   title.full_text = newText;
 }
 
+export function maxCharsForTitleLines(
+  slide: SlideMetadata,
+  lines: number,
+): number {
+  return maxCharsForLines(slide, lines);
+}
+
+export function isTitleEllipsisTruncation(
+  original: string,
+  candidate: string,
+): boolean {
+  const normalized = candidate.replace(/…$|\.\.\.$/, "").trim();
+  if (normalized.length >= original.trim().length) return false;
+  return original.trim().startsWith(normalized);
+}
+
+/** @deprecated Use Gemini rewrite for TITLE_004; kept for tests only. */
 export function shortenTitleToLineLimit(
   slide: SlideMetadata,
   maxLines = 3,

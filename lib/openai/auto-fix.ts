@@ -9,8 +9,9 @@ import {
   needsAiPreview,
 } from "@/lib/services/auto-fix";
 import {
+  isTitleEllipsisTruncation,
+  maxCharsForTitleLines,
   rewriteTitleText,
-  shortenTitleToLineLimit,
   slideTextChanged,
 } from "@/lib/utils/title-fix";
 
@@ -36,6 +37,14 @@ const AiFixResponseSchema = z.object({
 });
 
 export type AiFixResponse = z.infer<typeof AiFixResponseSchema>;
+
+export type AiFixOptions = {
+  title004Retry?: {
+    previousTitle: string;
+    lineCount: number;
+    maxChars: number;
+  };
+};
 
 const AI_FIX_JSON_SCHEMA = {
   type: "object",
@@ -81,9 +90,10 @@ const AI_FIX_SYSTEM_PROMPT = `You fix ACME executive compensation slide copy. Pr
 Only change text needed to resolve the issue. Do not invent data.
 
 For TITLE_004 (title exceeds three lines):
-- MUST return title_text with a shorter rewrite of the title
-- Keep the same meaning; remove filler and tighten phrasing
-- Target at most 3 lines when displayed at 24pt in the title box
+- MUST return title_text with a complete, shorter rewrite of the title
+- Keep the same meaning; tighten phrasing and remove filler words
+- Target at most 3 lines when displayed at the title font size in the title box
+- Do NOT truncate with "..." or "…" — rewrite the sentence so it reads naturally
 - Do NOT repeat the issue description in applied_summary
 
 For parallel bullet structure (BULLET_005 / PARALLEL_GRAMMAR):
@@ -96,6 +106,8 @@ For headline issues: rewrite the title as a clear takeaway, max 3 lines worth of
 For terminology: apply consistent ACME terms (%ile not Percentile, Target not TGT).
 
 Return bullet_rewrites with shape_id matching the input. Include 1-3 applied_summary strings describing what changed (not the rule name).`;
+
+const TITLE_004_MAX_ATTEMPTS = 3;
 
 function cloneSlide(slide: SlideMetadata): SlideMetadata {
   return structuredClone(slide);
@@ -127,7 +139,11 @@ function syncShapeFullText(shape: TextMetadata): void {
   shape.full_text = shape.paragraphs.map((p) => p.text).join("\n");
 }
 
-function buildSlideFixContext(finding: Finding, slide: SlideMetadata): string {
+function buildSlideFixContext(
+  finding: Finding,
+  slide: SlideMetadata,
+  options?: AiFixOptions,
+): string {
   const lines: string[] = [
     `Rule: ${finding.rule_id}`,
     `Issue: ${finding.title}`,
@@ -159,11 +175,23 @@ function buildSlideFixContext(finding: Finding, slide: SlideMetadata): string {
     lines.push("");
     lines.push(`Current title text: ${slide.title?.full_text ?? ""}`);
     if (finding.rule_id === "TITLE_004") {
+      const maxChars = maxCharsForTitleLines(slide, 3);
       lines.push(`Title line count: ${finding.actual_value}`);
+      lines.push(`Approximate character budget for 3 lines: ${maxChars}`);
       lines.push(
         "Rewrite title_text so the title fits within 3 lines. Return title_text in your JSON response.",
       );
     }
+  }
+
+  if (options?.title004Retry) {
+    const retry = options.title004Retry;
+    lines.push("");
+    lines.push("Previous rewrite was still too long.");
+    lines.push(`Previous attempt (${retry.lineCount} lines): ${retry.previousTitle}`);
+    lines.push(
+      `Shorten further. Stay under ${retry.maxChars} characters and 3 lines. Do not truncate with ellipsis.`,
+    );
   }
 
   return lines.join("\n");
@@ -172,8 +200,9 @@ function buildSlideFixContext(finding: Finding, slide: SlideMetadata): string {
 export async function generateAiFix(
   finding: Finding,
   slide: SlideMetadata,
+  options?: AiFixOptions,
 ): Promise<AiFixResponse> {
-  const context = buildSlideFixContext(finding, slide);
+  const context = buildSlideFixContext(finding, slide, options);
 
   const raw = await generateStructuredJson<unknown>({
     system: AI_FIX_SYSTEM_PROMPT,
@@ -203,7 +232,17 @@ export function applyAiFixResponse(
   );
 
   if (ai.title_text?.trim() && fixed.title) {
-    rewriteTitleText(fixed.title, ai.title_text.trim());
+    const newText = ai.title_text.trim();
+    const original = slide.title?.full_text.trim() ?? "";
+
+    if (
+      finding?.rule_id === "TITLE_004" &&
+      isTitleEllipsisTruncation(original, newText)
+    ) {
+      return { slide, fixable: false, applied: [] };
+    }
+
+    rewriteTitleText(fixed.title, newText);
     if (!applied.length) applied.push("Rewrote slide title");
   }
 
@@ -248,28 +287,56 @@ export function applyAiFixResponse(
   };
 }
 
-function applyTitle004Fallback(slide: SlideMetadata): AutoFixResult | null {
-  const shortened = shortenTitleToLineLimit(slide, 3);
-  if (!shortened || !slide.title) return null;
+async function resolveTitle004Fix(
+  finding: Finding,
+  slide: SlideMetadata,
+): Promise<AutoFixResult & { source: "ai" }> {
+  const maxChars = maxCharsForTitleLines(slide, 3);
+  let attemptSlide = slide;
 
-  const fixed = cloneSlide(slide);
-  rewriteTitleText(fixed.title!, shortened);
+  for (let attempt = 0; attempt < TITLE_004_MAX_ATTEMPTS; attempt++) {
+    const ai = await generateAiFix(finding, attemptSlide, {
+      title004Retry:
+        attempt > 0
+          ? {
+              previousTitle: attemptSlide.title?.full_text.trim() ?? "",
+              lineCount: estimateTitleLines(attemptSlide),
+              maxChars,
+            }
+          : undefined,
+    });
 
-  if (!slideTextChanged(slide, fixed) || estimateTitleLines(fixed) > 3) {
-    return null;
+    const result = applyAiFixResponse(attemptSlide, ai, finding);
+
+    if (result.fixable && estimateTitleLines(result.slide) <= 3) {
+      return {
+        ...result,
+        applied:
+          result.applied.length > 0
+            ? result.applied
+            : ["Rewrote title to fit within three lines"],
+        source: "ai",
+      };
+    }
+
+    if (result.slide.title?.full_text.trim()) {
+      attemptSlide = result.slide;
+    }
   }
 
-  return {
-    slide: fixed,
-    fixable: true,
-    applied: ["Shortened title to fit within three lines"],
-  };
+  throw new Error(
+    "Could not shorten the title to three lines while preserving meaning. Edit the title manually in PowerPoint.",
+  );
 }
 
 export async function resolveAutoFixPreview(
   finding: Finding,
   slide: SlideMetadata,
 ): Promise<AutoFixResult & { source: "deterministic" | "ai" | "hybrid" }> {
+  if (finding.rule_id === "TITLE_004") {
+    return resolveTitle004Fix(finding, slide);
+  }
+
   const deterministic = canAutoFix(finding.rule_id)
     ? applyAutoFix(slide, finding)
     : { slide, fixable: false, applied: [] as string[] };
@@ -280,33 +347,12 @@ export async function resolveAutoFixPreview(
     return { ...deterministic, source: "deterministic" };
   }
 
-  let aiResult: AutoFixResult;
-  try {
-    const ai = await generateAiFix(finding, slide);
-    aiResult = applyAiFixResponse(
-      deterministic.fixable ? deterministic.slide : slide,
-      ai,
-      finding,
-    );
-  } catch (error) {
-    if (finding.rule_id === "TITLE_004") {
-      const fallback = applyTitle004Fallback(slide);
-      if (fallback?.fixable) {
-        return { ...fallback, source: "ai" };
-      }
-    }
-    throw error;
-  }
-
-  if (
-    finding.rule_id === "TITLE_004" &&
-    (!aiResult.fixable || estimateTitleLines(aiResult.slide) > 3)
-  ) {
-    const fallback = applyTitle004Fallback(slide);
-    if (fallback?.fixable) {
-      return { ...fallback, source: aiResult.fixable ? "hybrid" : "ai" };
-    }
-  }
+  const ai = await generateAiFix(finding, slide);
+  const aiResult = applyAiFixResponse(
+    deterministic.fixable ? deterministic.slide : slide,
+    ai,
+    finding,
+  );
 
   if (!aiResult.fixable && deterministic.fixable) {
     return { ...deterministic, source: "deterministic" };

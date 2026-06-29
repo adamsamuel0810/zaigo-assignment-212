@@ -49,8 +49,12 @@ export function ReviewWorkspace({
   const [renderingSlides, setRenderingSlides] = useState(false);
   const [renderError, setRenderError] = useState(initialRenderError ?? null);
   const [downloadingFixed, setDownloadingFixed] = useState(false);
-  const [downloadFixedError, setDownloadFixedError] = useState<string | null>(null);
-  const [savedAiFixes, setSavedAiFixes] = useState<Record<string, SavedAiFix>>({});
+  const [downloadFixedError, setDownloadFixedError] = useState<string | null>(
+    null,
+  );
+  const [savedAiFixes, setSavedAiFixes] = useState<Record<string, SavedAiFix>>(
+    {},
+  );
 
   const hasSlideImages = Boolean(analysis.metadata.slide_images?.length);
   const renderPreviewAlert = useMemo(() => {
@@ -248,7 +252,8 @@ export function ReviewWorkspace({
             {savedAiFixCount > 0 && (
               <span className="hidden items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 md:inline-flex">
                 <Save className="h-3 w-3" />
-                {savedAiFixCount} saved AI fix{savedAiFixCount === 1 ? "" : "es"}
+                {savedAiFixCount} saved AI fix
+                {savedAiFixCount === 1 ? "" : "es"}
               </span>
             )}
             <button
@@ -387,6 +392,7 @@ export function ReviewWorkspace({
           }
           uploadFile={uploadFile}
           isSaved={Boolean(savedAiFixes[fixPreviewFinding.id])}
+          savedFix={savedAiFixes[fixPreviewFinding.id] ?? null}
           savedFixCount={savedAiFixCount}
           onSaveFix={handleSaveAiFix}
           onDownloadAllFixes={handleDownloadAllFixes}
